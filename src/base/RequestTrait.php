@@ -19,9 +19,6 @@ use yii\base\InvalidConfigException;
  */
 trait RequestTrait
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var bool
      */
@@ -32,9 +29,6 @@ trait RequestTrait
      */
     public $isWebAliasSetDynamically = false;
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * Returns the requested script name being used to access Craft (e.g. “index.php”).
      *
@@ -43,7 +37,7 @@ trait RequestTrait
      */
     public function getScriptFilename(): string
     {
-        /** @var $this \craft\web\Request|\craft\console\Request */
+        /* @var $this \craft\web\Request|\craft\console\Request */
         return basename($this->getScriptFile());
     }
 }

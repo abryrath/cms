@@ -28,9 +28,6 @@ use yii\db\ActiveQueryInterface;
  */
 class GlobalSet extends ActiveRecord
 {
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      * @return string
@@ -53,9 +50,9 @@ class GlobalSet extends ActiveRecord
             $query
                 ->where([
                     'exists', (new Query())
-                        ->from([Table::ELEMENTS . ' e'])
+                        ->from(['e' => Table::ELEMENTS])
                         ->where('[[e.id]] = ' . static::tableName() . '.[[id]]')
-                        ->andWhere(['e.dateDeleted' => null])
+                        ->andWhere(['e.dateDeleted' => null]),
                 ]);
         }
 
@@ -77,9 +74,9 @@ class GlobalSet extends ActiveRecord
     {
         return static::find()->where([
             'not exists', (new Query())
-                ->from([Table::ELEMENTS . ' e'])
+                ->from(['e' => Table::ELEMENTS])
                 ->where('[[e.id]] = ' . static::tableName() . '.[[id]]')
-                ->andWhere(['e.dateDeleted' => null])
+                ->andWhere(['e.dateDeleted' => null]),
         ]);
     }
 

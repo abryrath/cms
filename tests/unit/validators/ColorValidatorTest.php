@@ -21,9 +21,6 @@ use ErrorException;
  */
 class ColorValidatorTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var ColorValidator
      */
@@ -39,41 +36,31 @@ class ColorValidatorTest extends Unit
      */
     protected $tester;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
      *
      */
     public function testPattern()
     {
-        $this->assertSame('/^#[0-9a-f]{6}$/', $this->colorValidator->pattern);
+        self::assertSame('/^#[0-9a-f]{6}$/', $this->colorValidator->pattern);
     }
 
     /**
-     * @dataProvider colorNormalizationDataProvider
+     * @dataProvider normalizeColorDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param string $expected
+     * @param string $color
      */
-    public function testColorNormalization($result, $input)
+    public function testNormalizeColor(string $expected, string $color)
     {
-        $color = ColorValidator::normalizeColor($input);
-        $this->assertSame($result, $color);
-
-        $result = (mb_strpos($color, '#') !== false && mb_strlen($input) >= 0);
-        $this->assertTrue($result);
+        self::assertSame($expected, ColorValidator::normalizeColor($color));
     }
 
     /**
      * Passing an empty string will return an exception.
      */
-    public function testColorNormalizationException()
+    public function testNormalizeColorException()
     {
-        $this->tester->expectException(ErrorException::class, function() {
+        $this->tester->expectThrowable(ErrorException::class, function() {
             ColorValidator::normalizeColor('');
         });
     }
@@ -91,22 +78,19 @@ class ColorValidatorTest extends Unit
         $this->colorValidator->validateAttribute($this->model, 'exampleParam');
 
         if (!$mustValidate) {
-            $this->assertArrayHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayHasKey('exampleParam', $this->model->getErrors());
         } else {
-            $this->assertSame([], $this->model->getErrors());
+            self::assertSame([], $this->model->getErrors());
         }
 
         $this->model->clearErrors();
         $this->model->exampleParam = null;
     }
 
-    // Data Providers
-    // =========================================================================
-
     /**
      * @return array
      */
-    public function colorNormalizationDataProvider(): array
+    public function normalizeColorDataProvider(): array
     {
         return [
             ['#ffc10e', 'ffc10e'],
@@ -141,9 +125,6 @@ class ColorValidatorTest extends Unit
             ['255, 0, 0, 0.2', false]
         ];
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

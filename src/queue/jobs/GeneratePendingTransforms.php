@@ -18,9 +18,6 @@ use craft\queue\BaseJob;
  */
 class GeneratePendingTransforms extends BaseJob
 {
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -34,7 +31,7 @@ class GeneratePendingTransforms extends BaseJob
 
         foreach ($indexIds as $i => $id) {
             if ($index = $assetTransformsService->getTransformIndexModelById($id)) {
-                $this->setProgress($queue, $i / $totalIndexes, Craft::t('app', '{step} of {total}', [
+                $this->setProgress($queue, $i / $totalIndexes, Craft::t('app', '{step, number} of {total, number}', [
                     'step' => $i + 1,
                     'total' => $totalIndexes,
                 ]));
@@ -47,9 +44,6 @@ class GeneratePendingTransforms extends BaseJob
             }
         }
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

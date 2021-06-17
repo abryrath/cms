@@ -23,9 +23,6 @@ use Twig\TokenParser\AbstractTokenParser;
  */
 class SwitchTokenParser extends AbstractTokenParser
 {
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -40,7 +37,7 @@ class SwitchTokenParser extends AbstractTokenParser
     public function parse(Token $token)
     {
         $lineno = $token->getLine();
-        /** @var Parser $parser */
+        /* @var Parser $parser */
         $parser = $this->parser;
         $stream = $parser->getStream();
 
@@ -80,7 +77,7 @@ class SwitchTokenParser extends AbstractTokenParser
                     $body = $parser->subparse([$this, 'decideIfFork']);
                     $cases[] = new Node([
                         'values' => new Node($values),
-                        'body' => $body
+                        'body' => $body,
                     ]);
                     break;
                 case 'default':

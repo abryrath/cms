@@ -74,9 +74,20 @@
                     return false
                 }
 
+                if (!this.isPluginInstalled(plugin.handle)) {
+                    return true
+                }
+
                 const pluginLicenseInfo = this.getPluginLicenseInfo(plugin.handle)
 
-                if (this.isPluginInstalled(plugin.handle) && (!pluginLicenseInfo || (pluginLicenseInfo && pluginLicenseInfo.licenseKey))) {
+                if (!pluginLicenseInfo) {
+                    return false
+                }
+
+                if (
+                    pluginLicenseInfo.licenseKey &&
+                    pluginLicenseInfo.licenseKeyStatus !== 'trial' &&
+                    pluginLicenseInfo.licenseIssues.indexOf('mismatched') === -1) {
                     return false
                 }
 

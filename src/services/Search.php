@@ -8,9 +8,8 @@
 namespace craft\services;
 
 use Craft;
-use craft\base\Element;
 use craft\base\ElementInterface;
-use craft\base\Field;
+use craft\base\FieldInterface;
 use craft\db\Query;
 use craft\db\Table;
 use craft\errors\SiteNotFoundException;
@@ -34,9 +33,6 @@ use yii\db\Schema;
  */
 class Search extends Component
 {
-    // Constants
-    // =========================================================================
-
     /**
      * @event SearchEvent The event that is triggered before a search is performed.
      */
@@ -47,11 +43,14 @@ class Search extends Component
      */
     const EVENT_AFTER_SEARCH = 'afterSearch';
 
-    // Properties
-    // =========================================================================
+    /**
+     * @var bool Whether fulltext searches should be used ever. (MySQL only.)
+     * @since 3.4.10
+     */
+    public $useFullText = true;
 
     /**
-     * @var int The minimum word length that keywords must be in order to use a full-text search.
+     * @var int|null The minimum word length that keywords must be in order to use a full-text search (MySQL only).
      */
     public $minFullTextWordLength;
 
@@ -71,15 +70,23 @@ class Search extends Component
     private $_groups;
 
     /**
+     * @var bool
+     */
+    private $_isMysql;
+
+    /**
+     * @var array|null
+     * @see _isSupportedFullTextWord()
+     */
+    private $_mysqlStopWords;
+
+    /**
      * @var int Because the `keywords` column in the search index table is a
      * B-TREE index on Postgres, you can get an "index row size exceeds maximum
      * for index" error with a lot of data. This value is a hard limit to
      * truncate search index data for a single row in Postgres.
      */
     public $maxPostgresKeywordLength = 2450;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -88,12 +95,10 @@ class Search extends Component
     {
         parent::init();
 
-        if ($this->minFullTextWordLength === null) {
-            if (Craft::$app->getDb()->getIsMysql()) {
-                $this->minFullTextWordLength = 4;
-            } else {
-                $this->minFullTextWordLength = 1;
-            }
+        $this->_isMysql = Craft::$app->getDb()->getIsMysql();
+
+        if ($this->_isMysql && $this->minFullTextWordLength === null) {
+            $this->minFullTextWordLength = 4;
         }
     }
 
@@ -101,14 +106,15 @@ class Search extends Component
      * Indexes the attributes of a given element defined by its element type.
      *
      * @param ElementInterface $element
+     * @param string[]|null $fieldHandles The field handles that should be indexed,
+     * or `null` if all fields should be indexed.
      * @return bool Whether the indexing was a success.
      * @throws SiteNotFoundException
      */
-    public function indexElementAttributes(ElementInterface $element): bool
+    public function indexElementAttributes(ElementInterface $element, array $fieldHandles = null): bool
     {
         // Acquire a lock for this element/site ID
         $mutex = Craft::$app->getMutex();
-        /** @var Element $element */
         $lockKey = "searchindex:{$element->id}:{$element->siteId}";
 
         if (!$mutex->acquire($lockKey)) {
@@ -116,43 +122,54 @@ class Search extends Component
             return true;
         }
 
+        // Figure out which fields to update, and which to ignore
+        /* @var FieldInterface[] $updateFields */
+        $updateFields = [];
+        /* @var string[] $ignoreFieldIds */
+        $ignoreFieldIds = [];
+        if ($element::hasContent() && ($fieldLayout = $element->getFieldLayout()) !== null) {
+            if ($fieldHandles !== null) {
+                $fieldHandles = array_flip($fieldHandles);
+            }
+            foreach ($fieldLayout->getFields() as $field) {
+                if ($field->searchable) {
+                    // Are we updating this field's keywords?
+                    if ($fieldHandles === null || isset($fieldHandles[$field->handle])) {
+                        $updateFields[] = $field;
+                    } else {
+                        // Leave its existing keywords alone
+                        $ignoreFieldIds[] = (string)$field->id;
+                    }
+                }
+            }
+        }
+
         // Clear the element's current search keywords
-        Craft::$app->getDb()->createCommand()
-            ->delete(Table::SEARCHINDEX, [
-                'elementId' => $element->id,
-                'siteId' => $element->siteId,
-            ])
-            ->execute();
+        $deleteCondition = [
+            'elementId' => $element->id,
+            'siteId' => $element->siteId,
+        ];
+        if (!empty($ignoreFieldIds)) {
+            $deleteCondition = ['and', $deleteCondition, ['not', ['fieldId' => $ignoreFieldIds]]];
+        }
+        Db::delete(Table::SEARCHINDEX, $deleteCondition);
 
-        // Does it have any searchable attributes?
+        // Update the element attributes' keywords
         $searchableAttributes = array_flip($element::searchableAttributes());
-
         $searchableAttributes['slug'] = true;
-
         if ($element::hasTitles()) {
             $searchableAttributes['title'] = true;
         }
-
         foreach (array_keys($searchableAttributes) as $attribute) {
             $value = $element->getSearchKeywords($attribute);
             $this->_indexElementKeywords($element->id, $attribute, '0', $element->siteId, $value);
         }
 
-        // Custom fields too?
-        if ($element::hasContent() && ($fieldLayout = $element->getFieldLayout()) !== null) {
-            $keywords = [];
-
-            foreach ($fieldLayout->getFields() as $field) {
-                /** @var Field $field */
-                if ($field->searchable) {
-                    // Set the keywords for the content's site
-                    $fieldValue = $element->getFieldValue($field->handle);
-                    $fieldSearchKeywords = $field->getSearchKeywords($fieldValue, $element);
-                    $keywords[$field->id] = $fieldSearchKeywords;
-                }
-            }
-
-            $this->indexElementFields($element->id, $element->siteId, $keywords);
+        // Update the custom fields' keywords
+        foreach ($updateFields as $field) {
+            $fieldValue = $element->getFieldValue($field->handle);
+            $keywords = $field->getSearchKeywords($fieldValue, $element);
+            $this->_indexElementKeywords($element->id, 'field', (string)$field->id, $element->siteId, $keywords);
         }
 
         // Release the lock
@@ -169,6 +186,7 @@ class Search extends Component
      * @param array $fields The field values, indexed by field ID.
      * @return bool Whether the indexing was a success.
      * @throws SiteNotFoundException
+     * @deprecated in 3.4.0. Use [[indexElementAttributes()]] instead.
      */
     public function indexElementFields(int $elementId, int $siteId, array $fields): bool
     {
@@ -265,7 +283,7 @@ class Search extends Component
             // Loop through results and calculate score per element
             foreach ($results as $row) {
                 $elementId = $row['elementId'];
-                $score = $this->_scoreRow($row);
+                $score = $this->_scoreRow($row, $siteId);
 
                 if (!isset($scoresByElementId[$elementId])) {
                     $scoresByElementId[$elementId] = $score;
@@ -283,6 +301,7 @@ class Search extends Component
                     'elementIds' => array_keys($scoresByElementId),
                     'query' => $query,
                     'siteId' => $siteId,
+                    'results' => $results,
                 ]));
             }
 
@@ -309,6 +328,7 @@ class Search extends Component
                 'elementIds' => $elementIds,
                 'query' => $query,
                 'siteId' => $siteId,
+                'results' => $results,
             ]));
         }
 
@@ -323,26 +343,26 @@ class Search extends Component
     public function deleteOrphanedIndexes()
     {
         $db = Craft::$app->getDb();
+        $searchIndexTable = Table::SEARCHINDEX;
+        $elementsTable = Table::ELEMENTS;
+
         if ($db->getIsMysql()) {
             $sql = <<<SQL
-DELETE s.* FROM {{%searchindex}} s
-LEFT JOIN {{%elements}} e ON e.id = s.elementId
+DELETE s.* FROM $searchIndexTable s
+LEFT JOIN $elementsTable e ON e.id = s.elementId
 WHERE e.id IS NULL
 SQL;
         } else {
             $sql = <<<SQL
-DELETE FROM {{%searchindex}} s
+DELETE FROM $searchIndexTable s
 WHERE NOT EXISTS (
-    SELECT * FROM {{%elements}}
+    SELECT * FROM $elementsTable
     WHERE id = s."elementId"
 )
 SQL;
         }
         $db->createCommand($sql)->execute();
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Indexes keywords for a specific element attribute/field.
@@ -358,8 +378,8 @@ SQL;
     {
         $attribute = strtolower($attribute);
 
-        /** @var Site $site */
-        $site = Craft::$app->getSites()->getSiteById($siteId);
+        /* @var Site $site */
+        $site = Craft::$app->getSites()->getSiteById($siteId, true);
 
         // Clean 'em up
         $cleanKeywords = SearchHelper::normalizeKeywords($dirtyKeywords, [], true, $site->language);
@@ -395,25 +415,24 @@ SQL;
         }
 
         // Insert/update the row in searchindex
-        $db->createCommand()
-            ->insert(Table::SEARCHINDEX, $columns, false)
-            ->execute();
+        Db::insert(Table::SEARCHINDEX, $columns, false);
     }
 
     /**
      * Calculate score for a result.
      *
      * @param array $row A single result from the search query.
+     * @param int|int[]|null $siteId
      * @return float The total score for this row.
      */
-    private function _scoreRow(array $row): float
+    private function _scoreRow(array $row, $siteId = null): float
     {
         // Starting point
         $score = 0;
 
         // Loop through AND-terms and score each one against this row
         foreach ($this->_terms as $term) {
-            $score += $this->_scoreTerm($term, $row);
+            $score += $this->_scoreTerm($term, $row, 1, $siteId);
         }
 
         // Loop through each group of OR-terms
@@ -423,7 +442,7 @@ SQL;
 
             // Get the score for each term and add it to the total
             foreach ($terms as $term) {
-                $score += $this->_scoreTerm($term, $row, $weight);
+                $score += $this->_scoreTerm($term, $row, $weight, $siteId);
             }
         }
 
@@ -436,13 +455,14 @@ SQL;
      * @param SearchQueryTerm $term The SearchQueryTerm to score.
      * @param array $row The result row to score against.
      * @param float|int $weight Optional weight for this term.
+     * @param int|int[]|null $siteId
      * @return float The total score for this term/row combination.
      */
-    private function _scoreTerm(SearchQueryTerm $term, array $row, $weight = 1): float
+    private function _scoreTerm(SearchQueryTerm $term, array $row, $weight = 1, $siteId = null): float
     {
         // Skip these terms: exact filtering is just that, no weighted search applies since all elements will
         // already apply for these filters.
-        if ($term->exact || !($keywords = $this->_normalizeTerm($term->term))) {
+        if ($term->exact || !($keywords = $this->_normalizeTerm($term->term, $siteId))) {
             return 0;
         }
 
@@ -539,7 +559,7 @@ SQL;
 
         foreach ($tokens as $obj) {
             // Get SQL and/or keywords
-            list($sql, $keywords) = $this->_getSqlFromTerm($obj, $siteId);
+            [$sql, $keywords] = $this->_getSqlFromTerm($obj, $siteId);
 
             if ($sql === false && $inclusive) {
                 return false;
@@ -607,7 +627,7 @@ SQL;
                 $val = $fieldId;
             } else {
                 $attr = 'attribute';
-                $val = $term->attribute;
+                $val = strtolower($term->attribute);
             }
 
             // Use subselect for attributes
@@ -618,7 +638,7 @@ SQL;
 
         // Sanitize term
         if ($term->term !== null) {
-            $keywords = $this->_normalizeTerm($term->term);
+            $keywords = $this->_normalizeTerm($term->term, $siteId);
 
             // Make sure that it didn't result in an empty string (e.g. if they entered '&')
             // unless it's meant to search for *anything* (e.g. if they entered 'attribute:*').
@@ -627,7 +647,6 @@ SQL;
                 if (!$isMysql && $term->phrase) {
                     $sql = $this->_sqlPhraseExactMatch($keywords, $term->exact);
                 } else {
-
                     // Create fulltext clause from term
                     if ($this->_doFullTextSearch($keywords, $term)) {
                         if ($term->subRight) {
@@ -702,14 +721,18 @@ SQL;
      * Normalize term from tokens, keep a record for cache.
      *
      * @param string $term
+     * @param int|int[]|null $siteId
      * @return string
      */
-    private function _normalizeTerm(string $term): string
+    private function _normalizeTerm(string $term, $siteId = null): string
     {
         static $terms = [];
 
         if (!array_key_exists($term, $terms)) {
-            $terms[$term] = SearchHelper::normalizeKeywords($term);
+            if ($siteId && !is_array($siteId)) {
+                $site = Craft::$app->getSites()->getSiteById($siteId);
+            }
+            $terms[$term] = SearchHelper::normalizeKeywords($term, [], true, $site->language ?? null);
         }
 
         return $terms[$term];
@@ -724,7 +747,6 @@ SQL;
     private function _getFieldIdFromAttribute(string $attribute): int
     {
         // Get field id from service
-        /** @var Field $field */
         $field = Craft::$app->getFields()->getFieldByHandle($attribute);
 
         // Fallback to 0
@@ -824,7 +846,16 @@ SQL;
      */
     private function _doFullTextSearch(string $keywords, SearchQueryTerm $term): bool
     {
-        return $keywords !== '' && !$term->subLeft && !$term->exact && !$term->exclude && strlen($keywords) >= $this->minFullTextWordLength;
+        return
+            $this->useFullText &&
+            $keywords !== '' &&
+            !$term->subLeft &&
+            !$term->exact &&
+            !$term->exclude &&
+            $this->_isSupportedFullTextWord($keywords) &&
+            // Workaround on MySQL until this gets fixed: https://bugs.mysql.com/bug.php?id=78485
+            // Related issue: https://github.com/craftcms/cms/issues/3862
+            strpos($keywords, ' ') === false;
     }
 
     /**
@@ -855,7 +886,7 @@ SQL;
         $cleanKeywordsLength = strlen($cleanKeywords);
 
         // Give ourselves a little wiggle room.
-        /** @noinspection CallableParameterUseCaseInTypeContextInspection */
+        /* @noinspection CallableParameterUseCaseInTypeContextInspection */
         $maxSize = ceil($maxSize * 0.95);
 
         if ($cleanKeywordsLength > $maxSize) {
@@ -873,5 +904,70 @@ SQL;
         }
 
         return $cleanKeywords;
+    }
+
+    /**
+     * @param string $keyword
+     * @return bool
+     */
+    private function _isSupportedFullTextWord(string $keyword): bool
+    {
+        if (!$this->_isMysql) {
+            return true;
+        }
+
+        if ($this->minFullTextWordLength && strlen($keyword) < $this->minFullTextWordLength) {
+            return false;
+        }
+
+        if ($this->_mysqlStopWords === null) {
+            $this->_mysqlStopWords = [];
+            // todo: make this list smaller when we start requiring MySQL 5.6+ and can start forcing the searchindex table to use InnoDB
+            $stopWords = [
+                'able', 'about', 'above', 'according', 'accordingly', 'across', 'actually', 'after', 'afterwards', 'again', 'against', 'all', 'allow',
+                'allows', 'almost', 'alone', 'along', 'already', 'also', 'although', 'always', 'am', 'among', 'amongst', 'an', 'and', 'another',
+                'any', 'anybody', 'anyhow', 'anyone', 'anything', 'anyway', 'anyways', 'anywhere', 'apart', 'appear', 'appreciate', 'appropriate',
+                'are', 'around', 'as', 'aside', 'ask', 'asking', 'associated', 'at', 'available', 'away', 'awfully', 'be', 'became', 'because',
+                'become', 'becomes', 'becoming', 'been', 'before', 'beforehand', 'behind', 'being', 'believe', 'below', 'beside', 'besides', 'best',
+                'better', 'between', 'beyond', 'both', 'brief', 'but', 'by', 'came', 'can', 'cannot', 'cant', 'cause', 'causes', 'certain',
+                'certainly', 'changes', 'clearly', 'co', 'com', 'come', 'comes', 'concerning', 'consequently', 'consider', 'considering', 'contain',
+                'containing', 'contains', 'corresponding', 'could', 'course', 'currently', 'definitely', 'described', 'despite', 'did', 'different',
+                'do', 'does', 'doing', 'done', 'down', 'downwards', 'during', 'each', 'edu', 'eg', 'eight', 'either', 'else', 'elsewhere', 'enough',
+                'entirely', 'especially', 'et', 'etc', 'even', 'ever', 'every', 'everybody', 'everyone', 'everything', 'everywhere', 'ex', 'exactly',
+                'example', 'except', 'far', 'few', 'fifth', 'first', 'five', 'followed', 'following', 'follows', 'for', 'former', 'formerly', 'forth',
+                'four', 'from', 'further', 'furthermore', 'get', 'gets', 'getting', 'given', 'gives', 'go', 'goes', 'going', 'gone', 'got', 'gotten',
+                'greetings', 'had', 'happens', 'hardly', 'has', 'have', 'having', 'he', 'hello', 'help', 'hence', 'her', 'here', 'hereafter',
+                'hereby', 'herein', 'hereupon', 'hers', 'herself', 'hi', 'him', 'himself', 'his', 'hither', 'hopefully', 'how', 'howbeit', 'however',
+                'ie', 'if', 'ignored', 'immediate', 'in', 'inasmuch', 'inc', 'indeed', 'indicate', 'indicated', 'indicates', 'inner', 'insofar',
+                'instead', 'into', 'inward', 'is', 'it', 'its', 'itself', 'just', 'keep', 'keeps', 'kept', 'know', 'known', 'knows', 'last', 'lately',
+                'later', 'latter', 'latterly', 'least', 'less', 'lest', 'let', 'like', 'liked', 'likely', 'little', 'look', 'looking', 'looks', 'ltd',
+                'mainly', 'many', 'may', 'maybe', 'me', 'mean', 'meanwhile', 'merely', 'might', 'more', 'moreover', 'most', 'mostly', 'much', 'must',
+                'my', 'myself', 'name', 'namely', 'nd', 'near', 'nearly', 'necessary', 'need', 'needs', 'neither', 'never', 'nevertheless', 'new',
+                'next', 'nine', 'no', 'nobody', 'non', 'none', 'noone', 'nor', 'normally', 'not', 'nothing', 'novel', 'now', 'nowhere', 'obviously',
+                'of', 'off', 'often', 'oh', 'ok', 'okay', 'old', 'on', 'once', 'one', 'ones', 'only', 'onto', 'or', 'other', 'others', 'otherwise',
+                'ought', 'our', 'ours', 'ourselves', 'out', 'outside', 'over', 'overall', 'own', 'particular', 'particularly', 'per', 'perhaps',
+                'placed', 'please', 'plus', 'possible', 'presumably', 'probably', 'provides', 'que', 'quite', 'qv', 'rather', 'rd', 're', 'really',
+                'reasonably', 'regarding', 'regardless', 'regards', 'relatively', 'respectively', 'right', 'said', 'same', 'saw', 'say', 'saying',
+                'says', 'second', 'secondly', 'see', 'seeing', 'seem', 'seemed', 'seeming', 'seems', 'seen', 'self', 'selves', 'sensible', 'sent',
+                'serious', 'seriously', 'seven', 'several', 'shall', 'she', 'should', 'since', 'six', 'so', 'some', 'somebody', 'somehow', 'someone',
+                'something', 'sometime', 'sometimes', 'somewhat', 'somewhere', 'soon', 'sorry', 'specified', 'specify', 'specifying', 'still', 'sub',
+                'such', 'sup', 'sure', 'take', 'taken', 'tell', 'tends', 'th', 'than', 'thank', 'thanks', 'thanx', 'that', 'thats', 'the', 'their',
+                'theirs', 'them', 'themselves', 'then', 'thence', 'there', 'thereafter', 'thereby', 'therefore', 'therein', 'theres', 'thereupon',
+                'these', 'they', 'think', 'third', 'this', 'thorough', 'thoroughly', 'those', 'though', 'three', 'through', 'throughout', 'thru',
+                'thus', 'to', 'together', 'too', 'took', 'toward', 'towards', 'tried', 'tries', 'truly', 'try', 'trying', 'twice', 'two', 'un',
+                'under', 'unfortunately', 'unless', 'unlikely', 'until', 'unto', 'up', 'upon', 'us', 'use', 'used', 'useful', 'uses', 'using',
+                'usually', 'value', 'various', 'very', 'via', 'viz', 'vs', 'want', 'wants', 'was', 'way', 'we', 'welcome', 'well', 'went', 'were',
+                'what', 'whatever', 'when', 'whence', 'whenever', 'where', 'whereafter', 'whereas', 'whereby', 'wherein', 'whereupon', 'wherever',
+                'whether', 'which', 'while', 'whither', 'who', 'whoever', 'whole', 'whom', 'whose', 'why', 'will', 'willing', 'wish', 'with',
+                'within', 'without', 'wonder', 'would', 'yes', 'yet', 'you', 'your', 'yours', 'yourself', 'yourselves', 'zero',
+            ];
+            foreach ($stopWords as $word) {
+                if (!$this->minFullTextWordLength || strlen($word) >= $this->minFullTextWordLength) {
+                    $this->_mysqlStopWords[$word] = true;
+                }
+            }
+        }
+
+        return !isset($this->_mysqlStopWords[$keyword]);
     }
 }

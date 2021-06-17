@@ -23,9 +23,6 @@ use yii\base\ErrorException;
  */
 class PasswordValidatorTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester
      */
@@ -40,12 +37,6 @@ class PasswordValidatorTest extends Unit
      * @var ExampleModel
      */
     protected $model;
-
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
 
     /**
      * @dataProvider passwordValidationDataProvider
@@ -65,9 +56,9 @@ class PasswordValidatorTest extends Unit
         $this->passwordValidator->validateAttribute($this->model, 'exampleParam');
 
         if ($mustValidate) {
-            $this->assertArrayNotHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayNotHasKey('exampleParam', $this->model->getErrors());
         } else {
-            $this->assertArrayHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayHasKey('exampleParam', $this->model->getErrors());
         }
     }
 
@@ -86,9 +77,9 @@ class PasswordValidatorTest extends Unit
         $passVal->validateAttribute($this->model, 'exampleParam');
 
         if ($mustValidate) {
-            $this->assertArrayNotHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayNotHasKey('exampleParam', $this->model->getErrors());
         } else {
-            $this->assertArrayHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayHasKey('exampleParam', $this->model->getErrors());
         }
     }
 
@@ -107,37 +98,24 @@ class PasswordValidatorTest extends Unit
         $this->passwordValidator->validateAttribute($this->model, 'exampleParam');
 
         if ($mustValidate) {
-            $this->assertArrayNotHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayNotHasKey('exampleParam', $this->model->getErrors());
         } else {
-            $this->assertArrayHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayHasKey('exampleParam', $this->model->getErrors());
         }
-    }
-
-    /**
-     * @dataProvider isEmptyDataProvider
-     *
-     * @param $result
-     * @param $input
-     * @param $isEmptyVal
-     */
-    public function testIsEmpty($result, $input, $isEmptyVal)
-    {
-        $this->passwordValidator->isEmpty = $isEmptyVal;
-        $isEmpty = $this->passwordValidator->isEmpty($input);
-        $this->assertSame($result, $isEmpty);
     }
 
     public function testToStringExpectException()
     {
         $passVal = $this->passwordValidator;
-        $this->tester->expectThrowable(ErrorException::class, function() use ($passVal) {
+
+        $throwable = PHP_VERSION_ID < 80000 ? ErrorException::class : \TypeError::class;
+
+        $this->tester->expectThrowable($throwable, function() use ($passVal) {
             $passVal->isEmpty = 'craft_increment';
             $passVal->isEmpty(1);
         });
-    }
 
-    // Data Providers
-    // =========================================================================
+    }
 
     /**
      * @return array
@@ -184,31 +162,6 @@ class PasswordValidatorTest extends Unit
 
         ];
     }
-
-    /**
-     * @return array
-     */
-    public function isEmptyDataProvider(): array
-    {
-        return [
-            ['im a test', '', self::class . '::testReturn'],
-        ];
-    }
-
-
-    // Required callback methods
-    // =========================================================================
-
-    /**
-     * @return string
-     */
-    public static function testReturn(): string
-    {
-        return 'im a test';
-    }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

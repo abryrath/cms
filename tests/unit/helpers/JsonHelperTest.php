@@ -20,35 +20,23 @@ use UnitTester;
  */
 class JsonHelperTest extends Test
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester
      */
     protected $tester;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
-     * @dataProvider jsonDecodableDataProvider
+     * @dataProvider decodeIfJsonDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param mixed $expected
+     * @param string $str
      */
-    public function testDecodeIfJson($result, $input)
+    public function testDecodeIfJson($expected, string $str)
     {
-        $this->assertSame($result, Json::decodeIfJson($input));
+        self::assertSame($expected, Json::decodeIfJson($str));
     }
 
-    // Data Providers
-    // =========================================================================
-
-    public function jsonDecodableDataProvider(): array
+    public function decodeIfJsonDataProvider(): array
     {
         $basicArray = [
             'WHAT DO WE WANT' => 'JSON',
@@ -58,6 +46,26 @@ class JsonHelperTest extends Test
             ['{"test":"test"', '{"test":"test"'],
             [$basicArray, json_encode($basicArray)],
             [null, '']
+        ];
+    }
+
+    /**
+     * @dataProvider isJsonObjectDataProvider
+     *
+     * @param bool $expected
+     * @param string $str
+     */
+    public function testIsJsonObject(bool $expected, string $str)
+    {
+        self::assertSame($expected, Json::isJsonObject($str));
+    }
+
+    public function isJsonObjectDataProvider(): array
+    {
+        return [
+            [true, '{"foo":true}'],
+            [true, "{\n  \"foo\": true\n}"],
+            [false, '{"foo":true'],
         ];
     }
 }

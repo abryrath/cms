@@ -8,7 +8,7 @@
 namespace crafttests\fixtures;
 
 use craft\records\Section_SiteSettings;
-use craft\test\Fixture;
+use craft\test\ActiveFixture;
 
 /**
  * Class SectionSettingFixture
@@ -17,11 +17,8 @@ use craft\test\Fixture;
  * @author Global Network Group | Giel Tettelaar <giel@yellowflash.net>
  * @since 3.2
  */
-class SectionSettingFixture extends Fixture
+class SectionSettingFixture extends ActiveFixture
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @inheritdoc
      */

@@ -12,7 +12,6 @@ use Craft;
 use craft\enums\LicenseKeyStatus;
 use craft\errors\InvalidLicenseKeyException;
 use craft\errors\InvalidPluginException;
-use yii\base\Exception;
 
 /**
  * Craftnet API helper.
@@ -59,7 +58,13 @@ abstract class Api
         }
 
         // Craft license
-        $headers['X-Craft-License'] = App::licenseKey() ?? (defined('CRAFT_LICENSE_KEY') ? '__INVALID__' : '__REQUEST__');
+        if ($licenseKey = App::licenseKey()) {
+            $headers['X-Craft-License'] = $licenseKey;
+        } else if (defined('CRAFT_LICENSE_KEY')) {
+            $headers['X-Craft-License'] = '__INVALID__';
+        } else if ($user) {
+            $headers['X-Craft-License'] = '__REQUEST__';
+        }
 
         // plugin info
         $pluginLicenses = [];
@@ -70,11 +75,9 @@ abstract class Api
                 try {
                     $licenseKey = $pluginsService->getPluginLicenseKey($pluginHandle);
                 } catch (InvalidLicenseKeyException $e) {
-                    $licenseKey = null;
+                    $licenseKey = '__INVALID__';
                 }
-                if ($licenseKey !== null) {
-                    $pluginLicenses[] = "{$pluginHandle}:{$licenseKey}";
-                }
+                $pluginLicenses[] = "$pluginHandle:" . ($licenseKey ?? '__REQUEST__');
             }
         }
         if (!empty($pluginLicenses)) {
@@ -93,16 +96,12 @@ abstract class Api
     public static function platformVersions(bool $useComposerOverrides = false): array
     {
         // Let Composer's PlatformRepository do most of the work
-        $overrides = [];
         if ($useComposerOverrides) {
-            try {
-                $jsonPath = Craft::$app->getComposer()->getJsonPath();
-                $config = Json::decode(file_get_contents($jsonPath));
-                $overrides = $config['config']['platform'] ?? [];
-            } catch (Exception $e) {
-                // couldn't locate composer.json - NBD
-            }
+            $overrides = Craft::$app->getComposer()->getConfig()['config']['platform'] ?? [];
+        } else {
+            $overrides = [];
         }
+
         $repo = new PlatformRepository([], $overrides);
 
         $versions = [];
@@ -112,7 +111,7 @@ abstract class Api
 
         // Also include the DB driver/version
         $db = Craft::$app->getDb();
-        $versions[$db->getDriverName()] = $db->getVersion();
+        $versions[$db->getDriverName()] = App::normalizeVersion($db->getSchema()->getServerVersion());
 
         return $versions;
     }
@@ -156,9 +155,18 @@ abstract class Api
             $cache->set('licensedEdition', $licensedEdition, $duration);
         }
 
+        // did we just get any new plugin license keys?
+        $pluginsService = Craft::$app->getPlugins();
+        if (isset($headers['x-craft-plugin-licenses'])) {
+            $pluginLicenseKeys = explode(',', reset($headers['x-craft-plugin-licenses']));
+            foreach ($pluginLicenseKeys as $key) {
+                [$pluginHandle, $key] = explode(':', $key);
+                $pluginsService->setPluginLicenseKey($pluginHandle, $key);
+            }
+        }
+
         $pluginLicenseStatuses = [];
         $pluginLicenseEditions = [];
-        $pluginsService = Craft::$app->getPlugins();
         foreach ($pluginsService->getAllPluginInfo() as $pluginHandle => $pluginInfo) {
             if ($pluginInfo['isInstalled']) {
                 $pluginLicenseStatuses[$pluginHandle] = LicenseKeyStatus::Unknown;
@@ -167,14 +175,14 @@ abstract class Api
         if (isset($headers['x-craft-plugin-license-statuses'])) {
             $pluginLicenseInfo = explode(',', reset($headers['x-craft-plugin-license-statuses']));
             foreach ($pluginLicenseInfo as $info) {
-                list($pluginHandle, $pluginLicenseStatus) = explode(':', $info);
+                [$pluginHandle, $pluginLicenseStatus] = explode(':', $info);
                 $pluginLicenseStatuses[$pluginHandle] = $pluginLicenseStatus;
             }
         }
         if (isset($headers['x-craft-plugin-license-editions'])) {
             $pluginLicenseInfo = explode(',', reset($headers['x-craft-plugin-license-editions']));
             foreach ($pluginLicenseInfo as $info) {
-                list($pluginHandle, $pluginLicenseEdition) = explode(':', $info);
+                [$pluginHandle, $pluginLicenseEdition] = explode(':', $info);
                 $pluginLicenseEditions[$pluginHandle] = $pluginLicenseEdition;
             }
         }

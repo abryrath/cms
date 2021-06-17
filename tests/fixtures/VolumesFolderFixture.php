@@ -10,7 +10,7 @@ namespace crafttests\fixtures;
 use Craft;
 use craft\records\VolumeFolder;
 use craft\services\Volumes;
-use craft\test\Fixture;
+use craft\test\ActiveFixture;
 
 /**
  * Class VolumeFolderFixture.
@@ -19,11 +19,8 @@ use craft\test\Fixture;
  * @author Global Network Group | Giel Tettelaar <giel@yellowflash.net>
  * @since 3.2
  */
-class VolumesFolderFixture extends Fixture
+class VolumesFolderFixture extends ActiveFixture
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -38,9 +35,6 @@ class VolumesFolderFixture extends Fixture
      * @inheritdoc
      */
     public $depends = [VolumesFixture::class];
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

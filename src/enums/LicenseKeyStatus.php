@@ -17,10 +17,11 @@ namespace craft\enums;
  */
 abstract class LicenseKeyStatus
 {
-    // Constants
-    // =========================================================================
-
     const Valid = 'valid';
+    /**
+     * @since 3.6.0
+     */
+    const Trial = 'trial';
     const Invalid = 'invalid';
     const Mismatched = 'mismatched';
     const Astray = 'astray';

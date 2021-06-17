@@ -7,7 +7,6 @@
 
 namespace craft\gql\base;
 
-
 /**
  * Class GeneratorInterface
  *
@@ -20,7 +19,7 @@ interface GeneratorInterface
      * Generate GraphQL types.
      *
      * @param mixed $context Context for generated types
-     * @return array
+     * @return ObjectType[]
      */
     public static function generateTypes($context = null): array;
 }

@@ -8,9 +8,6 @@
 namespace craft\queue\jobs;
 
 use Craft;
-use craft\base\ElementInterface;
-use craft\elements\db\ElementQuery;
-use craft\elements\db\ElementQueryInterface;
 use craft\elements\MatrixBlock;
 use craft\events\BatchElementActionEvent;
 use craft\fields\Matrix;
@@ -22,12 +19,10 @@ use craft\services\Elements;
  *
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @since 3.3.18
+ * @deprecated in 3.4.8. Use [[ApplyNewPropagationMethod]] instead.
  */
 class ApplyMatrixPropagationMethod extends BaseJob
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var int The Matrix field ID
      */
@@ -43,17 +38,11 @@ class ApplyMatrixPropagationMethod extends BaseJob
      */
     public $newPropagationMethod;
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
     public function execute($queue)
     {
-        // Let's save ourselves some trouble and just clear all the caches for this element class
-        Craft::$app->getTemplateCaches()->deleteCachesByElementType(MatrixBlock::class);
-
         $query = MatrixBlock::find()
             ->fieldId($this->fieldId)
             ->siteId('*')
@@ -66,7 +55,7 @@ class ApplyMatrixPropagationMethod extends BaseJob
 
         $callback = function(BatchElementActionEvent $e) use ($queue, $query, $total, $matrixService, $elementsService) {
             if ($e->query === $query) {
-                $this->setProgress($queue, ($e->position - 1) / $total, Craft::t('app', '{step} of {total}', [
+                $this->setProgress($queue, ($e->position - 1) / $total, Craft::t('app', '{step, number} of {total, number}', [
                     'step' => $e->position,
                     'total' => $total,
                 ]));
@@ -76,7 +65,7 @@ class ApplyMatrixPropagationMethod extends BaseJob
                     return;
                 }
 
-                /** @var MatrixBlock $block */
+                /* @var MatrixBlock $block */
                 $block = $e->element;
                 $owner = $block->getOwner();
 
@@ -97,7 +86,7 @@ class ApplyMatrixPropagationMethod extends BaseJob
                     // Duplicate those blocks so their content can live on
                     while (!empty($otherSiteBlocks)) {
                         $otherSiteBlock = array_pop($otherSiteBlocks);
-                        /** @var MatrixBlock $newBlock */
+                        /* @var MatrixBlock $newBlock */
                         $newBlock = $elementsService->duplicateElement($otherSiteBlock);
                         // This may support more than just the site it was saved in
                         $newBlockSiteIds = $matrixService->getSupportedSiteIds($this->newPropagationMethod, $newBlock->getOwner());
@@ -113,9 +102,6 @@ class ApplyMatrixPropagationMethod extends BaseJob
         $elementsService->resaveElements($query);
         $elementsService->off(Elements::EVENT_BEFORE_RESAVE_ELEMENT, $callback);
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

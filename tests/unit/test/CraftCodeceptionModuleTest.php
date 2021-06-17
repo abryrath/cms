@@ -7,20 +7,20 @@
 
 namespace crafttests\unit\test;
 
+use Codeception\Test\Unit;
 use Craft;
 use craft\elements\User;
 use craft\errors\ElementNotFoundException;
 use craft\errors\InvalidElementException;
 use craft\test\mockclasses\components\EventTriggeringComponent;
+use DateInterval;
+use DateTime;
+use DateTimeZone;
 use Exception;
 use stdClass;
 use Throwable;
 use UnitTester;
 use yii\base\Event;
-use Codeception\Test\Unit;
-use DateTime;
-use DateTimeZone;
-use DateInterval;
 
 /**
  * CraftCodeceptionModuleTest
@@ -31,19 +31,10 @@ use DateInterval;
  */
 class CraftCodeceptionModuleTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester $tester
      */
     protected $tester;
-
-    // Public methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
 
     /**
      *
@@ -68,7 +59,7 @@ class CraftCodeceptionModuleTest extends Unit
                     ]
                 ]
             ])
-            );
+        );
     }
 
     /**
@@ -112,10 +103,10 @@ class CraftCodeceptionModuleTest extends Unit
         ];
 
         $user = new User($configArray);
-
-        Craft::$app->getElements()->saveElement($user);
+        $this->tester->saveElement($user);
 
         $this->tester->assertElementsExist(User::class, $configArray);
+        $this->tester->deleteElement($user);
     }
 
     /**
@@ -133,17 +124,17 @@ class CraftCodeceptionModuleTest extends Unit
         ];
 
         $user = new User($configArray);
-
-        Craft::$app->getElements()->saveElement($user);
+        $this->tester->saveElement($user);
 
         $this->tester->assertTestFails(function() use ($configArray) {
             $this->tester->assertElementsExist(User::class, $configArray, 2);
         });
+
+        $this->tester->deleteElement($user);
     }
 
     /**
      * @throws Throwable
-     * @throws ElementNotFoundException
      * @throws InvalidElementException
      * @throws \yii\base\Exception
      */
@@ -158,13 +149,16 @@ class CraftCodeceptionModuleTest extends Unit
 
         $user = new User($configArray);
 
-        Craft::$app->getElements()->saveElement($user);
+        $this->tester->saveElement($user);
 
         $dupeConfig = ['username' => 'user3', 'email' => 'user3@crafttest.com'];
-        Craft::$app->getElements()->duplicateElement($user, $dupeConfig);
+        $dupeUser = Craft::$app->getElements()->duplicateElement($user, $dupeConfig);
 
         $this->tester->assertElementsExist(User::class, $configArray, 1);
         $this->tester->assertElementsExist(User::class, array_merge($configArray, $dupeConfig), 1);
+
+        $this->tester->deleteElement($user);
+        $this->tester->deleteElement($dupeUser);
     }
 
     /**
@@ -192,7 +186,7 @@ class CraftCodeceptionModuleTest extends Unit
         });
 
         $dateTime = new DateTime('now', new DateTimeZone('UTC'));
-        $otherDateTime =  new DateTime('now', new DateTimeZone('UTC'));
+        $otherDateTime = new DateTime('now', new DateTimeZone('UTC'));
         $otherDateTime->add(new DateInterval('PT1S'));
         $this->tester->assertEqualDates(
             $this,

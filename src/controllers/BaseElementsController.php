@@ -7,7 +7,6 @@
 
 namespace craft\controllers;
 
-use Craft;
 use craft\base\ElementInterface;
 use craft\errors\InvalidTypeException;
 use craft\web\Controller;
@@ -22,23 +21,16 @@ use yii\web\BadRequestHttpException;
  */
 abstract class BaseElementsController extends Controller
 {
-    // Public Methods
-    // =========================================================================
-
     /**
-     * Initializes the application component.
-     *
-     * @throws BadRequestHttpException
+     * @inheritdoc
      */
-    public function init()
+    public function beforeAction($action)
     {
-        $this->requireAcceptsJson();
+        // All actions require CP requests
         $this->requireCpRequest();
-        parent::init();
-    }
 
-    // Protected Methods
-    // =========================================================================
+        return parent::beforeAction($action);
+    }
 
     /**
      * Returns the posted element type class.
@@ -48,7 +40,7 @@ abstract class BaseElementsController extends Controller
      */
     protected function elementType(): string
     {
-        $class = Craft::$app->getRequest()->getRequiredParam('elementType');
+        $class = $this->request->getRequiredParam('elementType');
 
         // TODO: should probably move the code inside try{} to a helper method
         try {
@@ -69,6 +61,6 @@ abstract class BaseElementsController extends Controller
      */
     protected function context()
     {
-        return Craft::$app->getRequest()->getParam('context');
+        return $this->request->getParam('context');
     }
 }

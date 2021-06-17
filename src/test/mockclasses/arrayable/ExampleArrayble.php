@@ -19,26 +19,17 @@ use yii\base\ArrayableTrait;
  */
 class ExampleArrayble implements Arrayable
 {
-    // Traits
-    // =========================================================================
-
     use ArrayableTrait;
 
-    // Public Properties
-    // =========================================================================
-
     /**
-     * @var
+     * @var string
      */
     public $exampleArrayableParam;
 
     /**
-     * @var
+     * @var string
      */
     public $extraField;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @return array
@@ -46,8 +37,7 @@ class ExampleArrayble implements Arrayable
     public function extraFields(): array
     {
         return [
-            'extraField'
+            'extraField',
         ];
     }
-
 }

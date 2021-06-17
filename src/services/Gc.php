@@ -9,6 +9,13 @@ namespace craft\services;
 
 use Craft;
 use craft\db\Table;
+use craft\elements\Asset;
+use craft\elements\Category;
+use craft\elements\Entry;
+use craft\elements\GlobalSet;
+use craft\elements\MatrixBlock;
+use craft\elements\Tag;
+use craft\elements\User;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use yii\base\Component;
@@ -37,8 +44,8 @@ class Gc extends Component
 
     /**
      * @var bool whether [[hardDelete()]] should delete *all* soft-deleted rows,
-     * rather than just the ones that were deleted long enough ago to be ready for hard-deletion
-     * per the [[\craft\config\GeneralConfig::softDeleteDuration]] config setting.
+     * rather than just the ones that were deleted long enough ago to be ready
+     * for hard-deletion per the <config3:softDeleteDuration> config setting.
      */
     public $deleteAllTrashed = false;
 
@@ -55,7 +62,6 @@ class Gc extends Component
         }
 
         Craft::$app->getDrafts()->purgeUnsavedDrafts();
-        Craft::$app->getTemplateCaches()->deleteExpiredCaches();
         Craft::$app->getUsers()->purgeExpiredPendingUsers();
         $this->_deleteStaleSessions();
 
@@ -63,11 +69,28 @@ class Gc extends Component
             Table::ELEMENTS, // elements should always go first
             Table::CATEGORYGROUPS,
             Table::ENTRYTYPES,
+            Table::FIELDGROUPS,
             Table::SECTIONS,
             Table::TAGGROUPS,
             Table::VOLUMES,
         ]);
 
+        $this->deletePartialElements(Asset::class, Table::ASSETS, 'id');
+        $this->deletePartialElements(Category::class, Table::CATEGORIES, 'id');
+        $this->deletePartialElements(Entry::class, Table::ENTRIES, 'id');
+        $this->deletePartialElements(GlobalSet::class, Table::GLOBALSETS, 'id');
+        $this->deletePartialElements(MatrixBlock::class, Table::MATRIXBLOCKS, 'id');
+        $this->deletePartialElements(Tag::class, Table::TAGS, 'id');
+        $this->deletePartialElements(User::class, Table::USERS, 'id');
+
+        $this->deletePartialElements(Asset::class, Table::CONTENT, 'elementId');
+        $this->deletePartialElements(Category::class, Table::CONTENT, 'elementId');
+        $this->deletePartialElements(Entry::class, Table::CONTENT, 'elementId');
+        $this->deletePartialElements(GlobalSet::class, Table::CONTENT, 'elementId');
+        $this->deletePartialElements(Tag::class, Table::CONTENT, 'elementId');
+        $this->deletePartialElements(User::class, Table::CONTENT, 'elementId');
+
+        $this->_deleteOrphanedDraftsAndRevisions();
         Craft::$app->getSearch()->deleteOrphanedIndexes();
 
         // Fire a 'run' event
@@ -111,13 +134,46 @@ class Gc extends Component
             $tables = [$tables];
         }
 
-        $db = Craft::$app->getDb();
-
         foreach ($tables as $table) {
-            $db->createCommand()
-                ->delete($table, $condition)
-                ->execute();
+            Db::delete($table, $condition);
         }
+    }
+
+    /**
+     * Deletes elements that are missing data in the given element extension table.
+     *
+     * @param string $elementType The element type
+     * @param string $table The extension table name
+     * @param string $fk The column name that contains the foreign key to `elements.id`
+     * @return void
+     * @since 3.6.6
+     */
+    public function deletePartialElements(string $elementType, string $table, string $fk): void
+    {
+        $db = Craft::$app->getDb();
+        $elementsTable = Table::ELEMENTS;
+
+        if ($db->getIsMysql()) {
+            $sql = <<<SQL
+DELETE [[e]].* FROM $elementsTable [[e]]
+LEFT JOIN $table [[t]] ON [[t.$fk]] = [[e.id]]
+WHERE
+  [[e.type]] = :type AND
+  [[t.$fk]] IS NULL
+SQL;
+        } else {
+            $sql = <<<SQL
+DELETE FROM $elementsTable
+USING $elementsTable [[e]]
+LEFT JOIN $table [[t]] ON [[t.$fk]] = [[e.id]]
+WHERE
+  $elementsTable.[[id]] = [[e.id]] AND
+  [[e.type]] = :type AND
+  [[t.$fk]] IS NULL
+SQL;
+        }
+
+        $db->createCommand($sql, ['type' => $elementType])->execute();
     }
 
     /**
@@ -135,8 +191,38 @@ class Gc extends Component
         $expire = DateTimeHelper::currentUTCDateTime();
         $pastTime = $expire->sub($interval);
 
-        Craft::$app->getDb()->createCommand()
-            ->delete(Table::SESSIONS, ['<', 'dateUpdated', Db::prepareDateForDb($pastTime)])
-            ->execute();
+        Db::delete(Table::SESSIONS, ['<', 'dateUpdated', Db::prepareDateForDb($pastTime)]);
+    }
+
+    /**
+     * Deletes any orphaned rows in the `drafts` and `revisions` tables.
+     *
+     * @return void
+     */
+    private function _deleteOrphanedDraftsAndRevisions(): void
+    {
+        $db = Craft::$app->getDb();
+        $elementsTable = Table::ELEMENTS;
+
+        foreach (['draftId' => Table::DRAFTS, 'revisionId' => Table::REVISIONS] as $fk => $table) {
+            if ($db->getIsMysql()) {
+                $sql = <<<SQL
+DELETE [[t]].* FROM $table [[t]]
+LEFT JOIN $elementsTable [[e]] ON [[e.$fk]] = [[t.id]]
+WHERE [[e.id]] IS NULL
+SQL;
+            } else {
+                $sql = <<<SQL
+DELETE FROM $table
+USING $table [[t]]
+LEFT JOIN $elementsTable [[e]] ON [[e.$fk]] = [[t.id]]
+WHERE
+  $table.[[id]] = [[t.id]] AND
+  [[e.id]] IS NULL
+SQL;
+            }
+
+            $db->createCommand($sql)->execute();
+        }
     }
 }

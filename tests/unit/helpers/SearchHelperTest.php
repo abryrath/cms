@@ -20,42 +20,29 @@ use UnitTester;
  */
 class SearchHelperTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester
      */
     protected $tester;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
-     * @dataProvider keywordNormalizationDataProviders
+     * @dataProvider normalizeKeywordsDataProviders
      *
-     * @param       $result
-     * @param       $keyword
+     * @param string $expected
+     * @param string|string[] $str
      * @param array $ignore
-     * @param bool $processMap
-     * @param null $language
+     * @param bool $processCharMap
+     * @param string|null $language
      */
-    public function testKeywordNormalization($result, $keyword, $ignore = [], $processMap = true, $language = null)
+    public function testNormalizeKeywords(string $expected, $str, array $ignore = [], bool $processCharMap = true, ?string $language = null)
     {
-        $keyword = Search::normalizeKeywords($keyword, $ignore, $processMap, $language);
-        $this->assertSame($result, $keyword);
+        self::assertSame($expected, Search::normalizeKeywords($str, $ignore, $processCharMap, $language));
     }
-
-    // Data Providers
-    // =========================================================================
 
     /**
      * @return array
      */
-    public function keywordNormalizationDataProviders(): array
+    public function normalizeKeywordsDataProviders(): array
     {
         return [
             ['test', 'test'],
@@ -74,8 +61,14 @@ class SearchHelperTest extends Unit
             ['🎧𢵌😀😘⛄', '🎧𢵌😀😘⛄'],
 
             // Ignorance isn't mb-4 safe
-            ['🎧𢵌😀😘⛄', '🎧𢵌😀😘⛄', ['😀']]
+            ['🎧𢵌😀😘⛄', '🎧𢵌😀😘⛄', ['😀']],
 
+            // https://github.com/craftcms/cms/issues/5214
+            ['a doggs tale', 'A Dogg’s Tale'],
+            ['a doggs tale', 'A Dogg\'s Tale'],
+
+            // https://github.com/craftcms/cms/issues/5631
+            ['foo bar baz', '<p>Foo</p><p>Bar<br>Baz</p>'],
         ];
     }
 }

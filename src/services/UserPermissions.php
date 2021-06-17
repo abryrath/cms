@@ -9,20 +9,20 @@
 namespace craft\services;
 
 use Craft;
-use craft\base\Plugin;
 use craft\base\UtilityInterface;
-use craft\base\Volume;
 use craft\db\Query;
 use craft\db\Table;
 use craft\elements\User;
 use craft\errors\WrongEditionException;
 use craft\events\ConfigEvent;
 use craft\events\RegisterUserPermissionsEvent;
+use craft\helpers\Db;
 use craft\helpers\ProjectConfig as ProjectConfigHelper;
 use craft\models\CategoryGroup;
 use craft\models\Section;
 use craft\models\UserGroup;
 use craft\records\UserPermission as UserPermissionRecord;
+use craft\utilities\ProjectConfig as ProjectConfigUtility;
 use yii\base\Component;
 use yii\db\Exception;
 
@@ -35,16 +35,10 @@ use yii\db\Exception;
  */
 class UserPermissions extends Component
 {
-    // Constants
-    // =========================================================================
-
     /**
      * @event RegisterUserPermissionsEvent The event that is triggered when registering user permissions.
      */
     const EVENT_REGISTER_PERMISSIONS = 'registerPermissions';
-
-    // Properties
-    // =========================================================================
 
     /**
      * @var
@@ -55,9 +49,6 @@ class UserPermissions extends Component
      * @var
      */
     private $_permissionsByUserId;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * Returns all of the known permissions, sorted by category.
@@ -73,18 +64,18 @@ class UserPermissions extends Component
 
         $general = [
             'accessSiteWhenSystemIsOff' => [
-                'label' => Craft::t('app', 'Access the site when the system is off')
+                'label' => Craft::t('app', 'Access the site when the system is off'),
             ],
             'accessCp' => [
-                'label' => Craft::t('app', 'Access the CP'),
+                'label' => Craft::t('app', 'Access the control panel'),
                 'nested' => [
                     'accessCpWhenSystemIsOff' => [
-                        'label' => Craft::t('app', 'Access the CP when the system is offline')
+                        'label' => Craft::t('app', 'Access the control panel when the system is offline'),
                     ],
                     'performUpdates' => [
-                        'label' => Craft::t('app', 'Perform Craft CMS and plugin updates')
+                        'label' => Craft::t('app', 'Perform Craft CMS and plugin updates'),
                     ],
-                ]
+                ],
             ],
             'customizeSources' => [
                 'label' => Craft::t('app', 'Customize element sources'),
@@ -92,10 +83,9 @@ class UserPermissions extends Component
         ];
 
         foreach (Craft::$app->getPlugins()->getAllPlugins() as $plugin) {
-            /** @var Plugin $plugin */
             if ($plugin->hasCpSection) {
                 $general['accessCp']['nested']['accessPlugin-' . $plugin->id] = [
-                    'label' => Craft::t('app', 'Access {plugin}', ['plugin' => $plugin->name])
+                    'label' => Craft::t('app', 'Access {plugin}', ['plugin' => $plugin->name]),
                 ];
             }
         }
@@ -111,17 +101,17 @@ class UserPermissions extends Component
                     'label' => Craft::t('app', 'Edit users'),
                     'nested' => [
                         'registerUsers' => [
-                            'label' => Craft::t('app', 'Register users')
+                            'label' => Craft::t('app', 'Register users'),
                         ],
                         'moderateUsers' => [
                             'label' => Craft::t('app', 'Moderate users'),
                             'info' => Craft::t('app', 'Includes suspending, unsuspending, and unlocking user accounts.'),
                         ],
                         'assignUserPermissions' => [
-                            'label' => Craft::t('app', 'Assign user permissions')
+                            'label' => Craft::t('app', 'Assign user permissions'),
                         ],
                         'assignUserGroups' => [
-                            'label' => Craft::t('app', 'Assign user groups')
+                            'label' => Craft::t('app', 'Assign user groups'),
                         ],
                         'administrateUsers' => [
                             'label' => Craft::t('app', 'Administrate users'),
@@ -134,15 +124,15 @@ class UserPermissions extends Component
                     ],
                 ],
                 'deleteUsers' => [
-                    'label' => Craft::t('app', 'Delete users')
+                    'label' => Craft::t('app', 'Delete users'),
                 ],
             ];
 
             foreach (Craft::$app->getUserGroups()->getAllGroups() as $userGroup) {
                 $userPermissions['editUsers']['nested']['assignUserGroups']['nested']['assignUserGroup:' . $userGroup->uid] = [
                     'label' => Craft::t('app', 'Assign users to “{group}”', [
-                        'group' => Craft::t('site', $userGroup->name)
-                    ])
+                        'group' => Craft::t('site', $userGroup->name),
+                    ]),
                 ];
             }
 
@@ -158,8 +148,9 @@ class UserPermissions extends Component
 
             foreach ($sites as $site) {
                 $permissions[$label]['editSite:' . $site->uid] = [
-                    'label' => Craft::t('app', 'Edit “{title}”',
-                        ['title' => Craft::t('site', $site->name)])
+                    'label' => Craft::t('app', 'Edit “{title}”', [
+                        'title' => Craft::t('site', $site->getName()),
+                    ]),
                 ];
             }
         }
@@ -201,7 +192,6 @@ class UserPermissions extends Component
         // Volumes
         // ---------------------------------------------------------------------
 
-        /** @var Volume[] $volumes */
         $volumes = Craft::$app->getVolumes()->getAllVolumes();
 
         foreach ($volumes as $volume) {
@@ -218,7 +208,7 @@ class UserPermissions extends Component
         // ---------------------------------------------------------------------
 
         $event = new RegisterUserPermissionsEvent([
-            'permissions' => $permissions
+            'permissions' => $permissions,
         ]);
         $this->trigger(self::EVENT_REGISTER_PERMISSIONS, $event);
 
@@ -261,7 +251,7 @@ class UserPermissions extends Component
     {
         if (!isset($this->_permissionsByGroupId[$groupId])) {
             $groupPermissions = $this->_createUserPermissionsQuery()
-                ->innerJoin('{{%userpermissions_usergroups}} p_g', '[[p_g.permissionId]] = [[p.id]]')
+                ->innerJoin(['p_g' => Table::USERPERMISSIONS_USERGROUPS], '[[p_g.permissionId]] = [[p.id]]')
                 ->where(['p_g.groupId' => $groupId])
                 ->column();
 
@@ -280,8 +270,8 @@ class UserPermissions extends Component
     public function getGroupPermissionsByUserId(int $userId): array
     {
         return $this->_createUserPermissionsQuery()
-            ->innerJoin('{{%userpermissions_usergroups}} p_g', '[[p_g.permissionId]] = [[p.id]]')
-            ->innerJoin('{{%usergroups_users}} g_u', '[[g_u.groupId]] = [[p_g.groupId]]')
+            ->innerJoin(['p_g' => Table::USERPERMISSIONS_USERGROUPS], '[[p_g.permissionId]] = [[p.id]]')
+            ->innerJoin(['g_u' => Table::USERGROUPS_USERS], '[[g_u.groupId]] = [[p_g.groupId]]')
             ->where(['g_u.userId' => $userId])
             ->column();
     }
@@ -319,10 +309,10 @@ class UserPermissions extends Component
         // Filter out any orphaned permissions
         $permissions = $this->_filterOrphanedPermissions($permissions);
 
-        /** @var UserGroup $group */
+        /* @var UserGroup $group */
         $group = Craft::$app->getUserGroups()->getGroupById($groupId);
         $path = UserGroups::CONFIG_USERPGROUPS_KEY . '.' . $group->uid . '.permissions';
-        Craft::$app->getProjectConfig()->set($path, $permissions);
+        Craft::$app->getProjectConfig()->set($path, $permissions, "Update permissions for user group “{$group->handle}”");
 
         return true;
     }
@@ -339,7 +329,7 @@ class UserPermissions extends Component
             $groupPermissions = $this->getGroupPermissionsByUserId($userId);
 
             $userPermissions = $this->_createUserPermissionsQuery()
-                ->innerJoin('{{%userpermissions_users}} p_u', '[[p_u.permissionId]] = [[p.id]]')
+                ->innerJoin(['p_u' => Table::USERPERMISSIONS_USERS], '[[p_u.permissionId]] = [[p.id]]')
                 ->where(['p_u.userId' => $userId])
                 ->column();
 
@@ -378,9 +368,9 @@ class UserPermissions extends Component
         Craft::$app->requireEdition(Craft::Pro);
 
         // Delete any existing user permissions
-        Craft::$app->getDb()->createCommand()
-            ->delete(Table::USERPERMISSIONS_USERS, ['userId' => $userId])
-            ->execute();
+        Db::delete(Table::USERPERMISSIONS_USERS, [
+            'userId' => $userId,
+        ]);
 
         // Lowercase the permissions
         $permissions = array_map('strtolower', $permissions);
@@ -398,12 +388,7 @@ class UserPermissions extends Component
             }
 
             // Add the new user permissions
-            Craft::$app->getDb()->createCommand()
-                ->batchInsert(
-                    Table::USERPERMISSIONS_USERS,
-                    ['permissionId', 'userId'],
-                    $userPermissionVals)
-                ->execute();
+            Db::batchInsert(Table::USERPERMISSIONS_USERS, ['permissionId', 'userId'], $userPermissionVals);
         }
 
         // Cache the new permissions
@@ -424,13 +409,18 @@ class UserPermissions extends Component
         $uid = $event->tokenMatches[0];
         $permissions = $event->newValue;
 
-        /** @var UserGroup $userGroup */
+        /* @var UserGroup $userGroup */
         $userGroup = Craft::$app->getUserGroups()->getGroupByUid($uid);
 
+        // No group - no permissions to change.
+        if (!$userGroup) {
+            return;
+        }
+
         // Delete any existing group permissions
-        Craft::$app->getDb()->createCommand()
-            ->delete(Table::USERPERMISSIONS_USERGROUPS, ['groupId' => $userGroup->id])
-            ->execute();
+        Db::delete(Table::USERPERMISSIONS_USERGROUPS, [
+            'groupId' => $userGroup->id,
+        ]);
 
         $groupPermissionVals = [];
 
@@ -441,20 +431,12 @@ class UserPermissions extends Component
             }
 
             // Add the new group permissions
-            Craft::$app->getDb()->createCommand()
-                ->batchInsert(
-                    Table::USERPERMISSIONS_USERGROUPS,
-                    ['permissionId', 'groupId'],
-                    $groupPermissionVals)
-                ->execute();
+            Db::batchInsert(Table::USERPERMISSIONS_USERGROUPS, ['permissionId', 'groupId'], $groupPermissionVals);
         }
 
         // Update caches
         $this->_permissionsByGroupId[$userGroup->id] = $permissions;
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Returns the entry permissions for a given Single section.
@@ -472,21 +454,21 @@ class UserPermissions extends Component
                     ['title' => Craft::t('site', $section->name)]),
                 'nested' => [
                     "publishEntries{$suffix}" => [
-                        'label' => Craft::t('app', 'Publish live changes')
+                        'label' => Craft::t('app', 'Publish live changes'),
                     ],
                     "editPeerEntryDrafts{$suffix}" => [
                         'label' => Craft::t('app', 'Edit other authors’ drafts'),
                         'nested' => [
                             "publishPeerEntryDrafts{$suffix}" => [
-                                'label' => Craft::t('app', 'Publish other authors’ drafts')
+                                'label' => Craft::t('app', 'Publish other authors’ drafts'),
                             ],
                             "deletePeerEntryDrafts{$suffix}" => [
-                                'label' => Craft::t('app', 'Delete other authors’ drafts')
+                                'label' => Craft::t('app', 'Delete other authors’ drafts'),
                             ],
-                        ]
+                        ],
                     ],
-                ]
-            ]
+                ],
+            ],
         ];
     }
 
@@ -508,35 +490,35 @@ class UserPermissions extends Component
                         'label' => Craft::t('app', 'Create entries'),
                     ],
                     "publishEntries{$suffix}" => [
-                        'label' => Craft::t('app', 'Publish live changes')
+                        'label' => Craft::t('app', 'Publish live changes'),
                     ],
                     "deleteEntries{$suffix}" => [
-                        'label' => Craft::t('app', 'Delete entries')
+                        'label' => Craft::t('app', 'Delete entries'),
                     ],
                     "editPeerEntries{$suffix}" => [
                         'label' => Craft::t('app', 'Edit other authors’ entries'),
                         'nested' => [
                             "publishPeerEntries{$suffix}" => [
-                                'label' => Craft::t('app', 'Publish live changes for other authors’ entries')
+                                'label' => Craft::t('app', 'Publish live changes for other authors’ entries'),
                             ],
                             "deletePeerEntries{$suffix}" => [
-                                'label' => Craft::t('app', 'Delete other authors’ entries')
+                                'label' => Craft::t('app', 'Delete other authors’ entries'),
                             ],
-                        ]
+                        ],
                     ],
                     "editPeerEntryDrafts{$suffix}" => [
                         'label' => Craft::t('app', 'Edit other authors’ drafts'),
                         'nested' => [
                             "publishPeerEntryDrafts{$suffix}" => [
-                                'label' => Craft::t('app', 'Publish other authors’ drafts')
+                                'label' => Craft::t('app', 'Publish other authors’ drafts'),
                             ],
                             "deletePeerEntryDrafts{$suffix}" => [
-                                'label' => Craft::t('app', 'Delete other authors’ drafts')
+                                'label' => Craft::t('app', 'Delete other authors’ drafts'),
                             ],
-                        ]
+                        ],
                     ],
-                ]
-            ]
+                ],
+            ],
         ];
     }
 
@@ -553,7 +535,7 @@ class UserPermissions extends Component
         foreach ($globalSets as $globalSet) {
             $permissions['editGlobalSet:' . $globalSet->uid] = [
                 'label' => Craft::t('app', 'Edit “{title}”',
-                    ['title' => Craft::t('site', $globalSet->name)])
+                    ['title' => Craft::t('site', $globalSet->name)]),
             ];
         }
 
@@ -573,7 +555,7 @@ class UserPermissions extends Component
         foreach ($groups as $group) {
             $permissions['editCategories:' . $group->uid] = [
                 'label' => Craft::t('app', 'Edit “{title}”',
-                    ['title' => Craft::t('site', $group->name)])
+                    ['title' => Craft::t('site', $group->name)]),
             ];
         }
 
@@ -603,11 +585,32 @@ class UserPermissions extends Component
                     "deleteFilesAndFoldersInVolume{$suffix}" => [
                         'label' => Craft::t('app', 'Remove files and folders'),
                     ],
+                    "replaceFilesInVolume{$suffix}" => [
+                        'label' => Craft::t('app', 'Replace files'),
+                    ],
                     "editImagesInVolume{$suffix}" => [
                         'label' => Craft::t('app', 'Edit images'),
-                    ]
-                ]
-            ]
+                    ],
+                    "viewPeerFilesInVolume{$suffix}" => [
+                        'label' => Craft::t('app', 'View files uploaded by other users'),
+                        'nested' => [
+                            "editPeerFilesInVolume{$suffix}" => [
+                                'label' => Craft::t('app', 'Edit files uploaded by other users'),
+                            ],
+                            "replacePeerFilesInVolume{$suffix}" => [
+                                'label' => Craft::t('app', 'Replace files uploaded by other users'),
+                                'warning' => Craft::t('app', 'When someone replaces a file, the record of who uploaded the file will be updated as well.'),
+                            ],
+                            "deletePeerFilesInVolume{$suffix}" => [
+                                'label' => Craft::t('app', 'Remove files uploaded by other users'),
+                            ],
+                            "editPeerImagesInVolume{$suffix}" => [
+                                'label' => Craft::t('app', 'Edit images uploaded by other users'),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -621,9 +624,14 @@ class UserPermissions extends Component
         $permissions = [];
 
         foreach (Craft::$app->getUtilities()->getAllUtilityTypes() as $class) {
-            /** @var UtilityInterface $class */
+            /* @var UtilityInterface $class */
+            // Admins only
+            if (ProjectConfigUtility::id() === $class::id()) {
+                continue;
+            }
+
             $permissions['utility:' . $class::id()] = [
-                'label' => $class::displayName()
+                'label' => $class::displayName(),
             ];
         }
 
@@ -745,6 +753,6 @@ class UserPermissions extends Component
     {
         return (new Query())
             ->select(['p.name'])
-            ->from(['{{%userpermissions}} p']);
+            ->from(['p' => Table::USERPERMISSIONS]);
     }
 }

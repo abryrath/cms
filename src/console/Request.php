@@ -17,13 +17,7 @@ use craft\base\RequestTrait;
  */
 class Request extends \yii\console\Request
 {
-    // Traits
-    // =========================================================================
-
     use RequestTrait;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -52,7 +46,7 @@ class Request extends \yii\console\Request
     }
 
     /**
-     * Returns whether the Control Panel was requested. (Narrator: It wasn't.)
+     * Returns whether the control panel was requested. (Narrator: It wasn't.)
      *
      * @return bool
      */
@@ -126,12 +120,44 @@ class Request extends \yii\console\Request
     }
 
     /**
+     * Returns whether the request initially had a token.
+     *
+     * @return bool
+     * @since 3.6.0
+     */
+    public function getHadToken(): bool
+    {
+        return false;
+    }
+
+    /**
      * Returns the token submitted with the request, if there is one.
      *
      * @return string|null The token, or `null` if there isn’t one.
      * @since 3.2.0
      */
-    public function getToken()
+    public function getToken(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Sets the token value.
+     *
+     * @param ?string $token
+     * @since 3.6.0
+     */
+    public function setToken(?string $token): void
+    {
+    }
+
+    /**
+     * Returns the site token submitted with the request, if there is one.
+     *
+     * @return string|null The token, or `null` if there isn’t one.
+     * @since 3.6.0
+     */
+    public function getSiteToken(): ?string
     {
         return null;
     }

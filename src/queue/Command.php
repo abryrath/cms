@@ -9,6 +9,7 @@ namespace craft\queue;
 
 use craft\helpers\Console;
 use yii\console\ExitCode;
+use yii\db\Exception as YiiDbException;
 
 /**
  * Manages the queue
@@ -19,9 +20,6 @@ use yii\console\ExitCode;
  */
 class Command extends \yii\queue\cli\Command
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var Queue
      */
@@ -39,9 +37,6 @@ class Command extends \yii\queue\cli\Command
         'class' => VerboseBehavior::class,
     ];
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -49,9 +44,6 @@ class Command extends \yii\queue\cli\Command
     {
         return in_array($actionID, ['run', 'listen'], true);
     }
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -82,18 +74,18 @@ class Command extends \yii\queue\cli\Command
      */
     public function actionRun(): int
     {
-        $this->queue->run();
-        return ExitCode::OK;
+        return $this->queue->run() ?? ExitCode::OK;
     }
 
     /**
      * Listens for new jobs added to the queue and runs them
      *
-     * @param int $delay Number of seconds for waiting new job
+     * @param int $timeout The number of seconds to wait between cycles
+     * @return int
      */
-    public function actionListen($delay = 3)
+    public function actionListen(int $timeout = 3): int
     {
-        $this->queue->listen($delay);
+        return $this->queue->run(true, $timeout) ?? ExitCode::OK;
     }
 
     /**
@@ -116,6 +108,30 @@ class Command extends \yii\queue\cli\Command
         } else {
             $this->stdout('Re-adding 1 failed job back into the queue ... ');
             $this->queue->retry($job);
+        }
+
+        $this->stdout('done' . PHP_EOL, Console::FG_GREEN);
+        return ExitCode::OK;
+    }
+
+    /**
+     * Releases job(s) from the queue.
+     *
+     * @param string $job The job ID to release. Pass `all` to release all jobs.
+     * @return int
+     * @throws YiiDbException
+     * @since 3.4.0
+     */
+    public function actionRelease($job): int
+    {
+        if (strtolower($job) === 'all') {
+            $this->stdout('Releasing all queue jobs ... ');
+            $this->queue->releaseAll();
+        } else {
+            $this->stdout('Releasing job ');
+            $this->stdout($job, Console::FG_YELLOW);
+            $this->stdout(' ... ');
+            $this->queue->release($job);
         }
 
         $this->stdout('done' . PHP_EOL, Console::FG_GREEN);

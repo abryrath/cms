@@ -23,35 +23,25 @@ use yii\base\InvalidArgumentException;
  */
 class LocalizationHelperTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester
      */
     protected $tester;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
-     * @dataProvider languageNormalizationDataProvider
+     * @dataProvider normalizeLanguageDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param string $expected
+     * @param string $language
      * @param bool $skipIfNoIntl
      */
-    public function testLanguageNormalization($result, $input, $skipIfNoIntl)
+    public function testNormalizeLanguage(string $expected, string $language, bool $skipIfNoIntl)
     {
         if ($skipIfNoIntl && !Craft::$app->getI18n()->getIsIntlLoaded()) {
             $this->markTestSkipped('Need the Intl extension to test this function.');
         }
 
-        $normalized = Localization::normalizeLanguage($input);
-        $this->assertSame($result, $normalized);
+        self::assertSame($expected, Localization::normalizeLanguage($language));
     }
 
     /**
@@ -68,57 +58,32 @@ class LocalizationHelperTest extends Unit
     }
 
     /**
-     * @dataProvider numberNormalizationDataProvider
+     * @dataProvider normalizeNumberDataProvider
      *
-     * @param $result
-     * @param $input
-     * @param $localeId
+     * @param mixed $expected
+     * @param mixed $number
+     * @param string|null $localeId
      */
-    public function testNumberNormalization($result, $input, $localeId)
+    public function testNormalizeNumber($expected, $number, ?string $localeId)
     {
-        $normalization = Localization::normalizeNumber($input, $localeId);
-        $this->assertSame($result, $normalization);
+        self::assertSame($expected, Localization::normalizeNumber($number, $localeId));
     }
 
     /**
      * @dataProvider localeDataDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param array|null $expected
+     * @param string $localeId
      */
-    public function testLocaleData($result, $input)
+    public function testLocaleData(?array $expected, string $localeId)
     {
-        $data = Localization::localeData($input);
-        $this->assertSame($result, $data);
-    }
-
-    /**
-     * @dataProvider findMissingTranslationDataProvider
-     *
-     * @param $result
-     * @param $input
-     */
-    public function testFindMissingTranslation($result, $input)
-    {
-        $this->assertSame($result, Localization::findMissingTranslation($input));
-    }
-
-    // Tests
-    // =========================================================================
-
-    /**
-     * @return array
-     */
-    public function findMissingTranslationDataProvider(): array
-    {
-        return [
-        ];
+        self::assertSame($expected, Localization::localeData($localeId));
     }
 
     /**
      * @return array
      */
-    public function languageNormalizationDataProvider(): array
+    public function normalizeLanguageDataProvider(): array
     {
         return [
             ['nl', 'nl', false],
@@ -133,7 +98,7 @@ class LocalizationHelperTest extends Unit
     /**
      * @return array
      */
-    public function numberNormalizationDataProvider(): array
+    public function normalizeNumberDataProvider(): array
     {
         return [
             ['2000000000', '20,0000,0000', null],
@@ -161,7 +126,6 @@ class LocalizationHelperTest extends Unit
                     ]
                 ], 'a-locale-id'
             ],
-            ['language', 'another-locale-id'],
             [['language2'], '/sub/another-locale-id'],
             [ArrayHelper::merge($nlTranslation, ['dutch' => 'a language']), 'nl']
         ];

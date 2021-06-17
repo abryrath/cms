@@ -8,7 +8,6 @@
 namespace craft\fields;
 
 use Craft;
-use craft\base\Element;
 use craft\base\ElementInterface;
 use craft\db\Table as DbTable;
 use craft\elements\db\ElementQueryInterface;
@@ -19,7 +18,11 @@ use craft\gql\interfaces\elements\Tag as TagInterface;
 use craft\gql\resolvers\elements\Tag as TagResolver;
 use craft\helpers\Db;
 use craft\helpers\Gql;
+use craft\helpers\Gql as GqlHelper;
+use craft\helpers\Html;
+use craft\models\GqlSchema;
 use craft\models\TagGroup;
+use craft\services\Gql as GqlService;
 use GraphQL\Type\Definition\Type;
 
 /**
@@ -30,9 +33,6 @@ use GraphQL\Type\Definition\Type;
  */
 class Tags extends BaseRelationField
 {
-    // Static
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -65,9 +65,6 @@ class Tags extends BaseRelationField
         return TagQuery::class;
     }
 
-    // Properties
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -83,15 +80,11 @@ class Tags extends BaseRelationField
      */
     private $_tagGroupId;
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
-    public function getInputHtml($value, ElementInterface $element = null): string
+    protected function inputHtml($value, ElementInterface $element = null): string
     {
-        /** @var Element|null $element */
         if ($element !== null && $element->hasEagerLoadedElements($this->handle)) {
             $value = $element->getEagerLoadedElements($this->handle);
         }
@@ -110,7 +103,7 @@ class Tags extends BaseRelationField
             return Craft::$app->getView()->renderTemplate('_components/fieldtypes/Tags/input',
                 [
                     'elementType' => static::elementType(),
-                    'id' => Craft::$app->getView()->formatInputId($this->handle),
+                    'id' => Html::id($this->handle),
                     'name' => $this->handle,
                     'elements' => $value,
                     'tagGroupId' => $tagGroup->id,
@@ -125,6 +118,14 @@ class Tags extends BaseRelationField
 
     /**
      * @inheritdoc
+     */
+    public function includeInGqlSchema(GqlSchema $schema): bool
+    {
+        return Gql::canQueryTags($schema);
+    }
+
+    /**
+     * @inheritdoc
      * @since 3.3.0
      */
     public function getContentGqlType()
@@ -134,6 +135,7 @@ class Tags extends BaseRelationField
             'type' => Type::listOf(TagInterface::getType()),
             'args' => TagArguments::getArguments(),
             'resolve' => TagResolver::class . '::resolve',
+            'complexity' => GqlHelper::relatedArgumentComplexity(GqlService::GRAPHQL_COMPLEXITY_EAGER_LOAD),
         ];
     }
 
@@ -154,9 +156,6 @@ class Tags extends BaseRelationField
 
         return ['groupId' => array_values($tagGroupIds)];
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Returns the tag group associated with this field.
@@ -185,7 +184,7 @@ class Tags extends BaseRelationField
             return $this->_tagGroupId;
         }
 
-        if (!preg_match('/^taggroup:(([0-9a-f\-]+))$/', $this->source, $matches)) {
+        if (!preg_match('/^taggroup:([0-9a-f\-]+)$/', $this->source, $matches)) {
             return $this->_tagGroupId = false;
         }
 

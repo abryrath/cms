@@ -28,7 +28,7 @@ class Sequence
      * @return integer|string
      * @since 3.0.32
      */
-    public static function current(string $name, int $length = null)
+    public static function current(string $name, ?int $length = null)
     {
         $next = self::_next($name);
         return self::_format($next - 1, $length);
@@ -43,7 +43,7 @@ class Sequence
      * @throws Exception if a lock could not be acquired for the sequence
      * @throws \Throwable if reasons
      */
-    public static function next(string $name, int $length = null)
+    public static function next(string $name, ?int $length = null)
     {
         $mutex = Craft::$app->getMutex();
         $lockName = 'seq--' . str_replace(['/', '\\'], '-', $name);
@@ -56,13 +56,16 @@ class Sequence
             $num = self::_next($name);
 
             if ($num === 1) {
-                Craft::$app->getDb()->createCommand()
-                    ->insert(Table::SEQUENCES, ['name' => $name, 'next' => $num + 1], false)
-                    ->execute();
+                Db::insert(Table::SEQUENCES, [
+                    'name' => $name,
+                    'next' => $num + 1,
+                ], false);
             } else {
-                Craft::$app->getDb()->createCommand()
-                    ->update(Table::SEQUENCES, ['next' => $num + 1], ['name' => $name], [], false)
-                    ->execute();
+                Db::update(Table::SEQUENCES, [
+                    'next' => $num + 1,
+                ], [
+                    'name' => $name,
+                ], [], false);
             }
         } catch (\Throwable $e) {
             $mutex->release($lockName);
@@ -95,7 +98,7 @@ class Sequence
      * @param int|null $length
      * @return integer|string
      */
-    private static function _format(int $num, int $length = null)
+    private static function _format(int $num, ?int $length = null)
     {
         if ($length !== null) {
             return str_pad($num, $length, '0', STR_PAD_LEFT);

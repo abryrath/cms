@@ -7,10 +7,11 @@
 
 namespace craft\gql\interfaces\elements;
 
-use craft\elements\MatrixBlock as MatrixBlockElement;
 use craft\gql\GqlEntityRegistry;
 use craft\gql\interfaces\Element;
+use craft\gql\TypeManager;
 use craft\gql\types\generators\MatrixBlockType;
+use craft\helpers\Gql;
 use GraphQL\Type\Definition\InterfaceType;
 use GraphQL\Type\Definition\Type;
 
@@ -43,9 +44,7 @@ class MatrixBlock extends Element
             'name' => static::getName(),
             'fields' => self::class . '::getFieldDefinitions',
             'description' => 'This is the interface implemented by all matrix blocks.',
-            'resolveType' => function(MatrixBlockElement $value) {
-                return $value->getGqlTypeName();
-            }
+            'resolveType' => self::class . '::resolveElementTypeName',
         ]));
 
         MatrixBlockType::generateTypes();
@@ -66,32 +65,33 @@ class MatrixBlock extends Element
      */
     public static function getFieldDefinitions(): array
     {
-        return array_merge(parent::getFieldDefinitions(), [
+        return TypeManager::prepareFieldDefinitions(array_merge(parent::getFieldDefinitions(), [
             'fieldId' => [
                 'name' => 'fieldId',
                 'type' => Type::int(),
-                'description' => 'The ID of the field that owns the matrix block.'
+                'description' => 'The ID of the field that owns the matrix block.',
             ],
             'ownerId' => [
                 'name' => 'ownerId',
                 'type' => Type::int(),
-                'description' => 'The ID of the element that owns the matrix block.'
+                'description' => 'The ID of the element that owns the matrix block.',
             ],
             'typeId' => [
                 'name' => 'typeId',
                 'type' => Type::int(),
-                'description' => 'The ID of the matrix block\'s type.'
+                'description' => 'The ID of the matrix block\'s type.',
             ],
             'typeHandle' => [
                 'name' => 'typeHandle',
                 'type' => Type::string(),
-                'description' => 'The handle of the matrix block\'s type.'
+                'description' => 'The handle of the matrix block\'s type.',
+                'complexity' => Gql::singleQueryComplexity(),
             ],
             'sortOrder' => [
                 'name' => 'sortOrder',
                 'type' => Type::int(),
-                'description' => 'The sort order of the matrix block within the owner element field.'
+                'description' => 'The sort order of the matrix block within the owner element field.',
             ],
-        ]);
+        ]), self::getName());
     }
 }

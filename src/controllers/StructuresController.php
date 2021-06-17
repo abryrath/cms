@@ -8,7 +8,7 @@
 namespace craft\controllers;
 
 use Craft;
-use craft\base\Element;
+use craft\base\ElementInterface;
 use craft\models\Structure;
 use craft\web\Controller;
 use yii\web\ForbiddenHttpException;
@@ -25,43 +25,33 @@ use yii\web\Response;
  */
 class StructuresController extends Controller
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var Structure|null
      */
     private $_structure;
 
     /**
-     * @var Element|null
+     * @var ElementInterface|null
      */
     private $_element;
 
-    // Public Methods
-    // =========================================================================
-
     /**
-     * Initializes the application component.
-     *
-     * @throws ForbiddenHttpException if this is not a Control Panel request
+     * @inheritdoc
      * @throws NotFoundHttpException if the requested element cannot be found
      */
-    public function init()
+    public function beforeAction($action)
     {
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
-        $request = Craft::$app->getRequest();
-
-        // This controller is only available to the Control Panel
-        if (!$request->getIsCpRequest()) {
-            throw new ForbiddenHttpException('Action only available from the Control Panel');
+        // This controller is only available to the control panel
+        if (!$this->request->getIsCpRequest()) {
+            throw new ForbiddenHttpException('Action only available from the control panel');
         }
 
-        $structureId = $request->getRequiredBodyParam('structureId');
-        $elementId = $request->getRequiredBodyParam('elementId');
-        $siteId = $request->getRequiredBodyParam('siteId');
+        $structureId = $this->request->getRequiredBodyParam('structureId');
+        $elementId = $this->request->getRequiredBodyParam('elementId');
+        $siteId = $this->request->getRequiredBodyParam('siteId');
 
         // Make sure they have permission to edit this structure
         $this->requireAuthorization('editStructure:' . $structureId);
@@ -76,8 +66,9 @@ class StructuresController extends Controller
             throw new NotFoundHttpException('Element not found');
         }
 
-        /** @var Element|string $elementType */
+        /* @var ElementInterface|string $elementType */
         $this->_element = $elementType::find()
+            ->drafts(null)
             ->id($elementId)
             ->siteId($siteId)
             ->anyStatus()
@@ -88,7 +79,7 @@ class StructuresController extends Controller
             throw new NotFoundHttpException('Element not found');
         }
 
-        parent::init();
+        return parent::beforeAction($action);
     }
 
     /**
@@ -110,20 +101,19 @@ class StructuresController extends Controller
      */
     public function actionMoveElement(): Response
     {
-        $request = Craft::$app->getRequest();
         $structuresService = Craft::$app->getStructures();
 
-        $parentElementId = $request->getBodyParam('parentId');
-        $prevElementId = $request->getBodyParam('prevId');
+        $parentElementId = $this->request->getBodyParam('parentId');
+        $prevElementId = $this->request->getBodyParam('prevId');
 
         if ($prevElementId) {
             $prevElement = Craft::$app->getElements()->getElementById($prevElementId, null, $this->_element->siteId);
-            $success = $structuresService->moveAfter($this->_structure->id, $this->_element, $prevElement, 'auto');
+            $success = $structuresService->moveAfter($this->_structure->id, $this->_element, $prevElement);
         } else if ($parentElementId) {
             $parentElement = Craft::$app->getElements()->getElementById($parentElementId, null, $this->_element->siteId);
-            $success = $structuresService->prepend($this->_structure->id, $this->_element, $parentElement, 'auto');
+            $success = $structuresService->prepend($this->_structure->id, $this->_element, $parentElement);
         } else {
-            $success = $structuresService->prependToRoot($this->_structure->id, $this->_element, 'auto');
+            $success = $structuresService->prependToRoot($this->_structure->id, $this->_element);
         }
 
         return $this->asJson(compact('success'));

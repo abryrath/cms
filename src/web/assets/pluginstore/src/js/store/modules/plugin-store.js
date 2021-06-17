@@ -78,13 +78,19 @@ const actions = {
         })
     },
 
-    getCmsEditions({commit}) {
+    getCmsEditions({commit}, payload) {
+        const force = payload && payload.force ? payload.force : false
+
         return new Promise((resolve, reject) => {
+            if (state.cmsEditions && force !== true) {
+                resolve()
+                return
+            }
+
             api.getCmsEditions()
                 .then(responseData => {
                     commit('updateCmsEditions', {responseData})
                     resolve(responseData)
-
                 })
                 .catch(error => {
                     reject(error)
@@ -179,7 +185,7 @@ const actions = {
     getPluginsByFeaturedSectionHandle({getters, dispatch}, context) {
         return new Promise((resolve, reject) => {
             const pluginIndexParams = getters['getPluginIndexParams'](context)
-            
+
             return api.getPluginsByFeaturedSectionHandle(context.featuredSectionHandle, pluginIndexParams)
                 .then(responseData => {
                     dispatch('updatePluginIndex', {context, responseData})

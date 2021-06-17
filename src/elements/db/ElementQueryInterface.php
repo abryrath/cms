@@ -10,6 +10,7 @@ namespace craft\elements\db;
 use ArrayAccess;
 use Countable;
 use craft\base\ElementInterface;
+use craft\db\Query;
 use craft\models\Site;
 use craft\search\SearchQuery;
 use IteratorAggregate;
@@ -21,6 +22,7 @@ use yii\db\QueryInterface;
  * ElementQueryInterface defines the common interface to be implemented by element query classes.
  * The default implementation of this interface is provided by [[ElementQuery]].
  *
+ * @mixin Query
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @since 3.0.0
  */
@@ -105,11 +107,11 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      *     ->one();
      * ```
      *
-     * @param bool $value The property value (defaults to true)
+     * @param bool|null $value The property value (defaults to true)
      * @return static self reference
      * @since 3.2.0
      */
-    public function drafts(bool $value = true);
+    public function drafts(?bool $value = true);
 
     /**
      * Narrows the query results based on the {elements}’ draft’s ID (from the `drafts` table).
@@ -132,7 +134,7 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      * ```php
      * // Fetch a draft
      * ${elements-var} = {php-method}
-     *     ->draftIf(10)
+     *     ->draftId(10)
      *     ->all();
      * ```
      *
@@ -151,6 +153,8 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      * | - | -
      * | `1` | for the {element} with an ID of 1.
      * | a [[{element-class}]] object | for the {element} represented by the object.
+     * | `'*'` | for any {element}
+     * | `false` | that aren’t associated with a published {element}
      *
      * ---
      *
@@ -168,7 +172,7 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      *     ->all();
      * ```
      *
-     * @param int|ElementInterface|null $value The property value
+     * @param int|ElementInterface|string|false|null $value The property value
      * @return static self reference
      * @since 3.2.0
      */
@@ -205,6 +209,33 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      * @since 3.2.0
      */
     public function draftCreator($value);
+
+    /**
+     * Narrows the query results to only unpublished drafts which have been saved after initial creation.
+     *
+     * ---
+     *
+     * ```twig
+     * {# Fetch saved, unpublished draft {elements} #}
+     * {% set {elements-var} = {twig-function}
+     *     .draftOf(false)
+     *     .savedDraftsOnly()
+     *     .all() %}
+     * ```
+     *
+     * ```php
+     * // Fetch saved, unpublished draft {elements}
+     * ${elements-var} = {element-class}::find()
+     *     ->draftOf(false)
+     *     ->savedDraftsOnly()
+     *     ->all();
+     * ```
+     *
+     * @param bool $value The property value (defaults to true)
+     * @return static self reference
+     * @since 3.6.6
+     */
+    public function savedDraftsOnly(bool $value = true);
 
     /**
      * Narrows the query results to only revision {elements}.
@@ -601,6 +632,15 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      *
      * The current site will be used by default.
      *
+     * Possible values include:
+     *
+     * | Value | Fetches {elements}…
+     * | - | -
+     * | `1` | from the site with an ID of `1`.
+     * | `[1, 2]` | from a site with an ID of `1` or `2`.
+     * | `['not', 1, 2]` | not in a site with an ID of `1` or `2`.
+     * | `'*'` | from any site.
+     *
      * ---
      *
      * ```twig
@@ -715,13 +755,14 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      *
      * @param bool $value The property value (defaults to true)
      * @return static self reference
+     * @deprecated in 3.5.0. [[status()]] should be used instead.
      */
     public function enabledForSite(bool $value = true);
 
     /**
      * Narrows the query results to only {elements} that are related to certain other elements.
      *
-     * See [Relations](https://docs.craftcms.com/v3/relations.html) for a full explanation of how to work with this parameter.
+     * See [Relations](https://craftcms.com/docs/3.x/relations.html) for a full explanation of how to work with this parameter.
      *
      * ---
      *
@@ -743,6 +784,35 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      * @return static self reference
      */
     public function relatedTo($value);
+
+    /**
+     * Narrows the query results to only {elements} that are related to certain other elements.
+     *
+     * See [Relations](https://craftcms.com/docs/3.x/relations.html) for a full explanation of how to work with this parameter.
+     *
+     * ---
+     *
+     * ```twig
+     * {# Fetch all {elements} that are related to myCategoryA and myCategoryB #}
+     * {% set {elements-var} = {twig-method}
+     *     .relatedTo(myCategoryA)
+     *     .andRelatedTo(myCategoryBy)
+     *     .all() %}
+     * ```
+     *
+     * ```php
+     * // Fetch all {elements} that are related to $myCategoryA and $myCategoryB
+     * ${elements-var} = {php-method}
+     *     ->relatedTo($myCategoryA)
+     *     ->andRelatedTo($myCategoryB)
+     *     ->all();
+     * ```
+     *
+     * @param int|array|ElementInterface|null $value The property value
+     * @return static self reference
+     * @since 3.6.11
+     */
+    public function andRelatedTo($value);
 
     /**
      * Narrows the query results based on the {elements}’ titles.
@@ -867,7 +937,7 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
     /**
      * Narrows the query results to only {elements} that match a search query.
      *
-     * See [Searching](https://docs.craftcms.com/v3/searching.html) for a full explanation of how to work with this parameter.
+     * See [Searching](https://craftcms.com/docs/3.x/searching.html) for a full explanation of how to work with this parameter.
      *
      * ---
      *
@@ -907,7 +977,7 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
     /**
      * Causes the query to return matching {elements} eager-loaded with related elements.
      *
-     * See [Eager-Loading Elements](https://docs.craftcms.com/v3/dev/eager-loading-elements.html) for a full explanation of how to work with this parameter.
+     * See [Eager-Loading Elements](https://craftcms.com/docs/3.x/dev/eager-loading-elements.html) for a full explanation of how to work with this parameter.
      *
      * ---
      *
@@ -1324,7 +1394,7 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
     public function positionedAfter($value);
 
     /**
-     * Clears out the [[status()]] and [[enabledForSite()]] parameters.
+     * Removes element filters based on their statuses.
      *
      * ---
      *
@@ -1388,4 +1458,22 @@ interface ElementQueryInterface extends QueryInterface, ArrayAccess, Arrayable, 
      * @return int[] The resulting element IDs. An empty array is returned if no elements are found.
      */
     public function ids($db = null): array;
+
+    /**
+     * Converts a found row into an element instance.
+     *
+     * @param array $row
+     * @return ElementInterface
+     * @since 3.6.0
+     */
+    public function createElement(array $row): ElementInterface;
+
+    /**
+     * Performs any post-population processing on elements.
+     *
+     * @param ElementInterface[]|array[] $elements the populated elements
+     * @return ElementInterface[]|array[]
+     * @since 3.6.0
+     */
+    public function afterPopulate(array $elements): array;
 }

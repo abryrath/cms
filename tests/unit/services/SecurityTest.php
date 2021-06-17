@@ -21,9 +21,6 @@ use UnitTester;
  */
 class SecurityTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester
      */
@@ -34,30 +31,19 @@ class SecurityTest extends Unit
      */
     protected $security;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
      * @dataProvider redactIfSensitiveDataProvider
      *
-     * @param $result
-     * @param $name
-     * @param $value
-     * @param $characters
+     * @param string|array $expected
+     * @param string $name
+     * @param string|array $value
+     * @param string[] $characters
      */
-    public function testRedactIfSensitive($result, $name, $value, $characters)
+    public function testRedactIfSensitive($expected, string $name, $value, array $characters)
     {
         $this->security->sensitiveKeywords = $characters;
-
-        $redacted = $this->security->redactIfSensitive($name, $value);
-        $this->assertSame($result, $redacted);
+        self::assertSame($expected, $this->security->redactIfSensitive($name, $value));
     }
-
-    // Data Providers
-    // =========================================================================
 
     /**
      * @return array
@@ -93,9 +79,6 @@ class SecurityTest extends Unit
             ['not stuff craft cms', '', 'not stuff craft cms', ['not']],
         ];
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

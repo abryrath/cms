@@ -31,13 +31,7 @@ use yii\base\Module;
  */
 class Plugin extends Module implements PluginInterface
 {
-    // Traits
-    // =========================================================================
-
     use PluginTrait;
-
-    // Constants
-    // =========================================================================
 
     /**
      * @event ModelEvent The event that is triggered before the plugin’s settings are saved.
@@ -54,9 +48,6 @@ class Plugin extends Module implements PluginInterface
      */
     const EVENT_AFTER_SAVE_SETTINGS = 'afterSaveSettings';
 
-    // Static
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -67,17 +58,11 @@ class Plugin extends Module implements PluginInterface
         ];
     }
 
-    // Properties
-    // =========================================================================
-
     /**
      * @var Model|bool|null The model used to store the plugin’s settings
-     * @see getSettingsModel()
+     * @see getSettings()
      */
     private $_settingsModel;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -96,7 +81,7 @@ class Plugin extends Module implements PluginInterface
 
         // Translation category
         $i18n = Craft::$app->getI18n();
-        /** @noinspection UnSafeIsSetOverArrayInspection */
+        /* @noinspection UnSafeIsSetOverArrayInspection */
         if (!isset($i18n->translations[$this->t9nCategory]) && !isset($i18n->translations[$this->t9nCategory . '*'])) {
             $i18n->translations[$this->t9nCategory] = [
                 'class' => PhpMessageSource::class,
@@ -232,12 +217,12 @@ class Plugin extends Module implements PluginInterface
         $settingsHtml = $this->settingsHtml();
         $view->setNamespace($namespace);
 
-        /** @var Controller $controller */
+        /* @var Controller $controller */
         $controller = Craft::$app->controller;
 
         return $controller->renderTemplate('settings/plugins/_settings', [
             'plugin' => $this,
-            'settingsHtml' => $settingsHtml
+            'settingsHtml' => $settingsHtml,
         ]);
     }
 
@@ -246,7 +231,7 @@ class Plugin extends Module implements PluginInterface
      */
     public function getMigrator(): MigrationManager
     {
-        /** @noinspection PhpIncompatibleReturnTypeInspection */
+        /* @noinspection PhpIncompatibleReturnTypeInspection */
         return $this->get('migrator');
     }
 
@@ -344,9 +329,6 @@ class Plugin extends Module implements PluginInterface
         }
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * Instantiates and returns the plugin’s installation migration, if it has one.
      *
@@ -423,7 +405,7 @@ class Plugin extends Module implements PluginInterface
     }
 
     /**
-     * Returns the path to the SVG icon that should be used in the plugin’s CP nav item.
+     * Returns the path to the SVG icon that should be used in the plugin’s nav item in the control panel.
      *
      * @return string|null
      * @see getCpNavItem()

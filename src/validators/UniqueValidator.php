@@ -21,9 +21,6 @@ use yii\validators\UniqueValidator as YiiUniqueValidator;
  */
 class UniqueValidator extends YiiUniqueValidator
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var string|string[] If [[targetClass]] is set, this defines the model
      * attributes that represent the record's primary key(s). Can be set to a
@@ -45,9 +42,6 @@ class UniqueValidator extends YiiUniqueValidator
      */
     public $caseInsensitive = false;
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -55,7 +49,7 @@ class UniqueValidator extends YiiUniqueValidator
     {
         if ($targetClass = $this->targetClass) {
             // Exclude this model's row using the filter
-            /** @var ActiveRecord|string $targetClass */
+            /* @var ActiveRecord|string $targetClass */
             $pks = $targetClass::primaryKey();
             if ($this->pk !== null) {
                 $pkMap = is_string($this->pk) ? StringHelper::split($this->pk) : $this->pk;

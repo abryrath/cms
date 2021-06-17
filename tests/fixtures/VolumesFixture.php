@@ -12,7 +12,7 @@ use craft\helpers\FileHelper;
 use craft\helpers\Json;
 use craft\records\Volume;
 use craft\services\Volumes;
-use craft\test\Fixture;
+use craft\test\ActiveFixture;
 use yii\base\ErrorException;
 use yii\base\Exception;
 
@@ -24,15 +24,9 @@ use yii\base\Exception;
  * @author Global Network Group | Giel Tettelaar <giel@yellowflash.net>
  * @since 3.2
  */
-class VolumesFixture extends Fixture
+class VolumesFixture extends ActiveFixture
 {
-    // Constants
-    // =========================================================================
-
     const BASE_URL = 'https://cdn.test.craftcms.test/';
-
-    // Properties
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -48,9 +42,6 @@ class VolumesFixture extends Fixture
      * @inheritdoc
      */
     public $depends = [FieldLayoutFixture::class];
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

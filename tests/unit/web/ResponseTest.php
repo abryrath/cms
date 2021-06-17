@@ -19,37 +19,27 @@ use craft\web\Response;
  */
 class ResponseTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var Response
      */
     public $response;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
      * @dataProvider getContentTypeDataProvider
      *
-     * @param $result
-     * @param $format
-     * @param null $header
+     * @param string|null $expected
+     * @param string $format
+     * @param string|null $contentType
      */
-    public function testGetContentType($result, $format, $header = null)
+    public function testGetContentType(?string $expected, ?string $format = null, ?string $contentType = null)
     {
-        $this->response->format = $format;
+        $this->response->format = $format ?? Response::FORMAT_RAW;
 
-        if ($header !== null) {
-            $this->response->headers->set('content-type', $header);
+        if ($contentType !== null) {
+            $this->response->getHeaders()->set('content-type', $contentType);
         }
 
-        $type = $this->response->getContentType();
-        $this->assertSame($result, $type);
+        self::assertSame($expected, $this->response->getContentType());
     }
 
     /**
@@ -62,10 +52,10 @@ class ResponseTest extends Unit
 
         $cacheTime = 31536000; // 1 year
 
-        $this->assertSame('cache', $headers->get('Pragma'));
-        $this->assertSame('cache', $headers->get('Pragma'));
-        $this->assertSame('max-age=31536000', $headers->get('Cache-Control'));
-        $this->assertSame(gmdate('D, d M Y H:i:s', time() + $cacheTime) . ' GMT', $headers->get('Expires'));
+        self::assertSame('cache', $headers->get('Pragma'));
+        self::assertSame('cache', $headers->get('Pragma'));
+        self::assertSame('max-age=31536000', $headers->get('Cache-Control'));
+        self::assertSame(gmdate('D, d M Y H:i:s', time() + $cacheTime) . ' GMT', $headers->get('Expires'));
     }
 
     /**
@@ -79,11 +69,8 @@ class ResponseTest extends Unit
 
         $this->response->setLastModifiedHeader($path);
 
-        $this->assertSame(gmdate('D, d M Y H:i:s', $modifiedTime) . ' GMT', $this->response->getHeaders()->get('Last-Modified'));
+        self::assertSame(gmdate('D, d M Y H:i:s', $modifiedTime) . ' GMT', $this->response->getHeaders()->get('Last-Modified'));
     }
-
-    // Data Providers
-    // =========================================================================
 
     /**
      * @return array
@@ -100,9 +87,6 @@ class ResponseTest extends Unit
             ['application/javascript', null, 'application/javascript;'],
         ];
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

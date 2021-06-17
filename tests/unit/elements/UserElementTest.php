@@ -11,15 +11,16 @@ use Craft;
 use craft\db\Query;
 use craft\db\Table;
 use craft\elements\User;
+use craft\helpers\Session;
 use craft\helpers\StringHelper;
 use craft\services\Users;
 use craft\test\TestCase;
+use DateInterval;
+use DateTime;
+use DateTimeZone;
 use UnitTester;
 use yii\base\Exception;
 use yii\validators\InlineValidator;
-use DateTime;
-use DateTimeZone;
-use DateInterval;
 
 /**
  * Unit tests for the User Element
@@ -30,9 +31,6 @@ use DateInterval;
  */
 class UserElementTest extends TestCase
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var Users
      */
@@ -48,12 +46,6 @@ class UserElementTest extends TestCase
      */
     protected $activeUser;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests Methods
-    // =========================================================================
-
     /**
      *
      */
@@ -64,7 +56,7 @@ class UserElementTest extends TestCase
         $this->activeUser->unverifiedEmail = 'unverifemail@email.com';
 
         $this->activeUser->validateUnverifiedEmail('unverifiedEmail', [], $validator);
-        $this->assertSame([], $this->activeUser->getErrors());
+        self::assertSame([], $this->activeUser->getErrors());
 
         $user = new User([
             'email' => 'unverifemail@email.com',
@@ -75,10 +67,12 @@ class UserElementTest extends TestCase
         $this->tester->saveElement($user);
 
         $this->activeUser->validateUnverifiedEmail('unverifiedEmail', [], $validator);
-        $this->assertSame(
+        self::assertSame(
             ['unverifiedEmail' => ['Email "unverifemail@email.com" has already been taken.']],
             $this->activeUser->getErrors()
         );
+
+        $this->tester->deleteElement($user);
     }
 
     /**
@@ -86,9 +80,14 @@ class UserElementTest extends TestCase
      */
     public function testGetAuthKey()
     {
+        Session::reset();
+
         $this->tester->mockCraftMethods('session', [
-            'get' => function ($tokenParam) {
-                $this->assertSame(Craft::$app->getUser()->tokenParam, $tokenParam);
+            'getHasSessionId' => function() {
+                return true;
+            },
+            'get' => function($tokenParam) {
+                self::assertSame(Craft::$app->getUser()->tokenParam, $tokenParam);
 
                 return 'TOKEN';
             }
@@ -98,10 +97,12 @@ class UserElementTest extends TestCase
             'getUserAgent' => 'Mozilla/5.0 (iPad; U; CPU OS 3_2_1 like Mac OS X; en-us)'
         ]);
 
-        $this->assertSame(
+        self::assertSame(
             '["TOKEN",null,"Mozilla/5.0 (iPad; U; CPU OS 3_2_1 like Mac OS X; en-us)"]',
             $this->activeUser->getAuthKey()
         );
+
+        Session::reset();
     }
 
     /**
@@ -130,16 +131,16 @@ class UserElementTest extends TestCase
                 'token' => 'EXAMPLE_TOKEN'
             ])->execute();
 
-        $this->assertFalse($this->activeUser->validateAuthKey('NOT_JSON'));
-        $this->assertFalse($this->activeUser->validateAuthKey('["JSON_ONE_ITEM"]'));
-        $this->assertFalse(
+        self::assertFalse($this->activeUser->validateAuthKey('NOT_JSON'));
+        self::assertFalse($this->activeUser->validateAuthKey('["JSON_ONE_ITEM"]'));
+        self::assertFalse(
             $this->activeUser->validateAuthKey(
                 '["EXAMPLE_TOKEN",null,"NOT_A_USER_AGENT"]'
             )
         );
-        $this->assertFalse(
+        self::assertFalse(
             $this->activeUser->validateAuthKey(
-                '["NOT_A_VALID_TOKEN",null,"'.$validUserAgent.'"]'
+                '["NOT_A_VALID_TOKEN",null,"' . $validUserAgent . '"]'
             )
         );
 
@@ -149,9 +150,9 @@ class UserElementTest extends TestCase
         $this->tester->mockCraftMethods('request', [
             'getUserAgent' => $validUserAgent
         ]);
-        $this->assertTrue(
+        self::assertTrue(
             $this->activeUser->validateAuthKey(
-                '["EXAMPLE_TOKEN",null,"'.$validUserAgent.'"]'
+                '["EXAMPLE_TOKEN",null,"' . $validUserAgent . '"]'
             )
         );
     }
@@ -174,7 +175,7 @@ class UserElementTest extends TestCase
                 'token' => 'EXAMPLE_TOKEN'
             ])->execute();
 
-        $this->assertTrue(
+        self::assertTrue(
             $this->activeUser->validateAuthKey(
                 '["EXAMPLE_TOKEN",null,"INVALID_USER_AGENT"]'
             )
@@ -187,11 +188,11 @@ class UserElementTest extends TestCase
     public function testGetCooldownEndTime()
     {
         $this->activeUser->locked = false;
-        $this->assertNull($this->activeUser->getCooldownEndTime());
+        self::assertNull($this->activeUser->getCooldownEndTime());
 
         $this->activeUser->locked = true;
         $this->activeUser->lockoutDate = null;
-        $this->assertNull($this->activeUser->getCooldownEndTime());
+        self::assertNull($this->activeUser->getCooldownEndTime());
 
 
         Craft::$app->getConfig()->getGeneral()->cooldownDuration = 172800;
@@ -215,17 +216,17 @@ class UserElementTest extends TestCase
      */
     public function testGetRemainingCooldownTime()
     {
-        $this->assertNull($this->activeUser->getRemainingCooldownTime());
+        self::assertNull($this->activeUser->getRemainingCooldownTime());
 
         $this->activeUser->locked = true;
         $this->activeUser->lockoutDate = new DateTime('now', new DateTimeZone('UTC'));
-        Craft::$app->getConfig()->getGeneral()->cooldownDuration = (60*60*24*2)+10; // 2 days and 10 seconds
+        Craft::$app->getConfig()->getGeneral()->cooldownDuration = (60 * 60 * 24 * 2) + 10; // 2 days and 10 seconds
 
-        $this->assertInstanceOf(DateInterval::class, $interval = $this->activeUser->getRemainingCooldownTime());
-        $this->assertSame('2', (string)$interval->d);
+        self::assertInstanceOf(DateInterval::class, $interval = $this->activeUser->getRemainingCooldownTime());
+        self::assertSame('2', (string)$interval->d);
 
         $this->activeUser->lockoutDate->sub(new DateInterval('P10D'));
-        $this->assertNull($this->activeUser->getRemainingCooldownTime());
+        self::assertNull($this->activeUser->getRemainingCooldownTime());
     }
 
     /**
@@ -237,19 +238,21 @@ class UserElementTest extends TestCase
             ->batchInsert(Table::SESSIONS, [
                 'userId',
                 'token'
-            ], [[
-                $this->activeUser->id,
-                StringHelper::randomString(32)
             ], [
-                $this->activeUser->id,
-                StringHelper::randomString(32)
-            ]]);
+                [
+                    $this->activeUser->id,
+                    StringHelper::randomString(32)
+                ], [
+                    $this->activeUser->id,
+                    StringHelper::randomString(32)
+                ]
+            ]);
 
         $this->activeUser->newPassword = 'random_password';
         $this->tester->saveElement($this->activeUser);
 
         $exists = (new Query())->from(Table::SESSIONS)->where(['userId' => $this->activeUser->id])->exists();
-        $this->assertFalse($exists);
+        self::assertFalse($exists);
     }
 
     /**
@@ -279,9 +282,6 @@ class UserElementTest extends TestCase
         $this->activeUser->pending = false;
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -301,5 +301,15 @@ class UserElementTest extends TestCase
         $this->users = Craft::$app->getUsers();
 
         $this->tester->saveElement($this->activeUser);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function _after()
+    {
+        parent::_after();
+
+        $this->tester->deleteElement($this->activeUser);
     }
 }

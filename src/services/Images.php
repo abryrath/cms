@@ -15,7 +15,9 @@ use craft\helpers\FileHelper;
 use craft\helpers\Image as ImageHelper;
 use craft\image\Raster;
 use craft\image\Svg;
+use craft\image\SvgAllowedAttributes;
 use enshrined\svgSanitize\Sanitizer;
+use Imagine\Imagick\Imagick;
 use yii\base\Component;
 use yii\base\Exception;
 
@@ -31,15 +33,9 @@ use yii\base\Exception;
  */
 class Images extends Component
 {
-    // Constants
-    // =========================================================================
-
     const DRIVER_GD = 'gd';
     const DRIVER_IMAGICK = 'imagick';
     const MINIMUM_IMAGICK_VERSION = '6.2.9';
-
-    // Properties
-    // =========================================================================
 
     /**
      * @var array Image formats that can be manipulated.
@@ -55,9 +51,6 @@ class Images extends Component
      * @var string|null Imagick version being used, if any.
      */
     private $_imagickVersion;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * Decide on the image driver being used.
@@ -97,6 +90,8 @@ class Images extends Component
 
     /**
      * Returns the version of the image driver.
+     *
+     * @return string
      */
     public function getVersion(): string
     {
@@ -119,7 +114,13 @@ class Images extends Component
      */
     public function getSupportedImageFormats(): array
     {
-        return $this->supportedImageFormats;
+        $supportedFormats = $this->supportedImageFormats;
+
+        if ($this->getSupportsWebP()) {
+            $supportedFormats[] = 'webp';
+        }
+
+        return $supportedFormats;
     }
 
     /**
@@ -140,9 +141,9 @@ class Images extends Component
 
         // Taken from Imagick\Imagine() constructor.
         // Imagick::getVersion() is static only since Imagick PECL extension 3.2.0b1, so instantiate it.
-        /** @noinspection PhpStaticAsDynamicMethodCallInspection */
+        /* @noinspection PhpStaticAsDynamicMethodCallInspection */
         $versionString = \Imagick::getVersion()['versionString'];
-        list($this->_imagickVersion) = sscanf($versionString, 'ImageMagick %s %04d-%02d-%02d %s %s');
+        [$this->_imagickVersion] = sscanf($versionString, 'ImageMagick %s %04d-%02d-%02d %s %s');
 
         return $this->_imagickVersion;
     }
@@ -158,12 +159,27 @@ class Images extends Component
             return false;
         }
 
+        // https://github.com/craftcms/cms/issues/5435
+        if (empty(\Imagick::queryFormats())) {
+            return false;
+        }
+
         // Make sure it meets the minimum API version requirement
         if (version_compare($this->getImageMagickApiVersion(), self::MINIMUM_IMAGICK_VERSION) === -1) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Returns whether the WebP image format is supported.
+     *
+     * @return bool
+     */
+    public function getSupportsWebP(): bool
+    {
+        return $this->getIsImagick() ? !empty(Imagick::queryFormats('WEBP')) : function_exists('imagewebp');
     }
 
     /**
@@ -197,9 +213,10 @@ class Images extends Component
     /**
      * Determines if there is enough memory to process this image.
      *
-     * The code was adapted from http://www.php.net/manual/en/function.imagecreatefromjpeg.php#64155. It will first
-     * attempt to do it with available memory. If that fails, Craft will bump the memory to amount defined by the
-     * [[\craft\config\GeneralConfig::phpMaxMemoryLimit|phpMaxMemoryLimit]] config setting, then try again.
+     * The code was adapted from http://www.php.net/manual/en/function.imagecreatefromjpeg.php#64155.
+     * It will first attempt to do it with available memory. If that fails,
+     * Craft will bump the memory to amount defined by the
+     * <config3:phpMaxMemoryLimit> config setting, then try again.
      *
      * @param string $filePath The path to the image file.
      * @param bool $toTheMax If set to true, will set the PHP memory to the config setting phpMaxMemoryLimit.
@@ -227,6 +244,13 @@ class Images extends Component
 
         // Find out how much memory this image is going to need.
         $imageInfo = getimagesize($filePath);
+
+        // If we can't find out the imagesize, chances are, we won't be able to anything about it.
+        if (!is_array($imageInfo)) {
+            Craft::warning('Could not determine image information for ' . $filePath);
+
+            return false;
+        }
 
         $K64 = 65536;
         $tweakFactor = 1.7;
@@ -266,6 +290,7 @@ class Images extends Component
             }
 
             $sanitizer = new Sanitizer();
+            $sanitizer->setAllowedAttrs(new SvgAllowedAttributes());
             $svgContents = file_get_contents($filePath);
             $svgContents = $sanitizer->sanitize($svgContents);
 
@@ -337,7 +362,7 @@ class Images extends Component
             return false;
         }
 
-        /** @var Raster $image */
+        /* @var Raster $image */
         $image = $this->loadImage($filePath);
         $image->rotate($degrees);
 

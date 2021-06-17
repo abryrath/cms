@@ -7,11 +7,15 @@
 
 namespace crafttests\unit\helpers;
 
+use Codeception\Stub;
 use Codeception\Test\Unit;
 use Craft;
+use craft\db\Command;
+use craft\elements\Asset;
 use craft\errors\OperationAbortedException;
 use craft\helpers\ElementHelper;
 use craft\test\mockclasses\elements\ExampleElement;
+use craft\test\mockclasses\elements\MockElementQuery;
 use crafttests\fixtures\EntryFixture;
 use Exception;
 use UnitTester;
@@ -25,19 +29,10 @@ use UnitTester;
  */
 class ElementHelperTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester
      */
     protected $tester;
-
-    // Public Methods
-    // =========================================================================
-
-    // Fixtures
-    // =========================================================================
 
     public function _fixtures(): array
     {
@@ -48,21 +43,34 @@ class ElementHelperTest extends Unit
         ];
     }
 
-    // Tests
-    // =========================================================================
-
     /**
-     * @dataProvider createSlugDataProvider
+     * @dataProvider generateSlugDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param string $expected
+     * @param string $input
+     * @param bool|null $ascii
+     * @param string|null $language
      */
-    public function testCreateSlug($result, $input)
+    public function testGenerateSlug(string $expected, string $input, ?bool $ascii = null, ?string $language = null)
     {
         $glue = Craft::$app->getConfig()->getGeneral()->slugWordSeparator;
-        $result = str_replace('[separator-here]', $glue, $result);
+        $expected = str_replace('[separator-here]', $glue, $expected);
 
-        $this->assertSame($result, ElementHelper::createSlug($input));
+        self::assertSame($expected, ElementHelper::generateSlug($input, $ascii, $language));
+    }
+
+    /**
+     * @dataProvider normalizeSlugDataProvider
+     *
+     * @param string $expected
+     * @param string $slug
+     */
+    public function testNormalizeSlug(string $expected, string $slug)
+    {
+        $glue = Craft::$app->getConfig()->getGeneral()->slugWordSeparator;
+        $expected = str_replace('[separator-here]', $glue, $expected);
+
+        self::assertSame($expected, ElementHelper::normalizeSlug($slug));
     }
 
     /**
@@ -73,36 +81,53 @@ class ElementHelperTest extends Unit
         $general = Craft::$app->getConfig()->getGeneral();
         $general->allowUppercaseInSlug = false;
 
-        $this->assertSame('word' . $general->slugWordSeparator . 'word', ElementHelper::createSlug('word WORD'));
+        self::assertSame('word' . $general->slugWordSeparator . 'word', ElementHelper::createSlug('word WORD'));
     }
 
     /**
      * @dataProvider doesUriHaveSlugTagDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param bool $expected
+     * @param string $uriFormat
      */
-    public function testDoesUriFormatHaveSlugTag($result, $input)
+    public function testDoesUriFormatHaveSlugTag(bool $expected, string $uriFormat)
     {
-        $doesIt = ElementHelper::doesUriFormatHaveSlugTag($input);
-        $this->assertSame($result, $doesIt);
-        $this->assertIsBool($doesIt);
+        self::assertSame($expected, ElementHelper::doesUriFormatHaveSlugTag($uriFormat));
     }
 
     /**
      * @dataProvider setUniqueUriDataProvider
      *
-     * @param $result
-     * @param $config
+     * @param array $expected
+     * @param array $config
+     * @param int $duplicates
      * @throws OperationAbortedException
      */
-    public function testSetUniqueUri($result, $config)
+    public function testSetUniqueUri(array $expected, array $config, int $duplicates = 0)
     {
-        $example = new ExampleElement($config);
-        $this->assertNull(ElementHelper::setUniqueUri($example));
+        if ($duplicates) {
+            $db = \Craft::$app->getDb();
+            $this->tester->mockDbMethods([
+                'createCommand' => function($sql, $params) use (&$duplicates, &$db) {
+                    /* @var Command $command */
+                    $command = Stub::construct(Command::class, [
+                        ['db' => $db, 'sql' => $sql],
+                    ], [
+                        'queryScalar' => function() use (&$duplicates) {
+                            return $duplicates-- ? 1 : 0;
+                        },
+                    ]);
+                    $command->bindValues($params);
+                    return $command;
+                }
+            ]);
+        }
 
-        foreach ($result as $key => $res) {
-            $this->assertSame($res, $example->$key);
+        $example = new ExampleElement($config);
+        self::assertNull(ElementHelper::setUniqueUri($example));
+
+        foreach ($expected as $key => $res) {
+            self::assertSame($res, $example->$key);
         }
     }
 
@@ -111,11 +136,16 @@ class ElementHelperTest extends Unit
      */
     public function testMaxSlugIncrementDoesntThrow()
     {
+        $oldValue = Craft::$app->getConfig()->getGeneral()->maxSlugIncrement;
         Craft::$app->getConfig()->getGeneral()->maxSlugIncrement = 0;
+
         $this->tester->expectThrowable(OperationAbortedException::class, function() {
             $el = new ExampleElement(['uriFormat' => 'test/{slug}']);
             ElementHelper::setUniqueUri($el);
         });
+
+        // reset
+        Craft::$app->getConfig()->getGeneral()->maxSlugIncrement = $oldValue;
     }
 
     /**
@@ -134,7 +164,7 @@ class ElementHelperTest extends Unit
             $result = false;
         }
 
-        $this->assertTrue($result);
+        self::assertTrue($result);
     }
 
     /**
@@ -149,22 +179,40 @@ class ElementHelperTest extends Unit
         ];
 
         ElementHelper::setNextPrevOnElements($editable);
-        $this->assertNull($one->getPrev());
+        self::assertNull($one->getPrev());
 
-        $this->assertSame($two, $one->getNext());
-        $this->assertSame($two, $one->getNext());
-        $this->assertSame($two, $three->getPrev());
+        self::assertSame($two, $one->getNext());
+        self::assertSame($two, $one->getNext());
+        self::assertSame($two, $three->getPrev());
 
-        $this->assertNull($three->getNext());
+        self::assertNull($three->getNext());
     }
-
-    // Data Providers
-    // =========================================================================
 
     /**
      * @return array
      */
-    public function createSlugDataProvider(): array
+    public function generateSlugDataProvider(): array
+    {
+        return [
+            ['wordWord', 'wordWord'],
+            ['word[separator-here]word', 'word word'],
+            ['foo[separator-here]0', 'foo 0'],
+            ['word', 'word'],
+            ['123456789', '123456789'],
+            ['abc[separator-here]dfg', 'abc...dfg'],
+            ['abc[separator-here]dfg', 'abc...(dfg)'],
+            ['A[separator-here]B[separator-here]C', 'A-B-C'], // https://github.com/craftcms/cms/issues/4266
+            ['test[separator-here]slug', 'test_slug'],
+            ['Audi[separator-here]S8[separator-here]4E[separator-here]2006[separator-here]2010', 'Audi S8 4E (2006-2010)'], // https://github.com/craftcms/cms/issues/4607
+            ['こんにちは', 'こんにちは', false], // https://github.com/craftcms/cms/issues/4628
+            ['Сертификация', 'Сертификация', false], // https://github.com/craftcms/cms/issues/1535
+        ];
+    }
+
+    /**
+     * @return array
+     */
+    public function normalizeSlugDataProvider(): array
     {
         return [
             ['wordWord', 'wordWord'],
@@ -208,6 +256,8 @@ class ElementHelperTest extends Unit
             [['uri' => null], ['uriFormat' => null]],
             [['uri' => null], ['uriFormat' => '']],
             [['uri' => 'craft'], ['uriFormat' => '{slug}', 'slug' => 'craft']],
+            [['uri' => 'craft--3'], ['uriFormat' => '{slug}', 'slug' => 'craft'], 2],
+            [['uri' => 'testing-uri-longer-than-255-chars/arrêté-du-24-décembre-2020-portant-modification-de-larrêté-du-4-décembre-2020-fixant-la-liste-des-personnes-autorisées-à-exercer-en-france-la-profession-de-médecin-dans-la-spécialité-gériatrie-en-application-des-dispos--2'], ['uriFormat' => 'testing-uri-longer-than-255-chars/{slug}', 'slug' => 'arrêté-du-24-décembre-2020-portant-modification-de-larrêté-du-4-décembre-2020-fixant-la-liste-des-personnes-autorisées-à-exercer-en-france-la-profession-de-médecin-dans-la-spécialité-gériatrie-en-application-des-dispositions-de-larti'], 1],
             [['uri' => 'test'], ['uriFormat' => 'test/{slug}']],
             [['uri' => 'test/test'], ['uriFormat' => 'test/{slug}', 'slug' => 'test']],
             [['uri' => 'test/tes.!@#$%^&*()_t'], ['uriFormat' => 'test/{slug}', 'slug' => 'tes.!@#$%^&*()_t']],
@@ -215,8 +265,8 @@ class ElementHelperTest extends Unit
             // 254 chars.
             [['uri' => 'test/asdsadsadaasdasdadssssssssssssssssssssssssssssssssssssssssssssssadsasdsdaadsadsasddasadsdasasasdsadsadaasdasdadssssssssssssssssssssssssssssssssssssssssssssssadsasdsdaadsadsasddasadsdasasasdsadsadaasdasdadsssssssssssssssssssssssssssssssssssssssssssss'], ['uriFormat' => 'test/{slug}', 'slug' => 'asdsadsadaasdasdadssssssssssssssssssssssssssssssssssssssssssssssadsasdsdaadsadsasddasadsdasasasdsadsadaasdasdadssssssssssssssssssssssssssssssssssssssssssssssadsasdsdaadsadsasddasadsdasasasdsadsadaasdasdadsssssssssssssssssssssssssssssssssssssssssssss']],
 
-            [['uri' => 'some-uri/With--URL--2--1'], ['uriFormat' => 'some-uri/{slug}', 'slug' => 'With--URL--2']],
-            [['uri' => 'some-uri/With--URL--1--1'], ['uriFormat' => 'some-uri/{slug}', 'slug' => 'With--URL--1']],
+            [['uri' => 'some-uri/With--URL--2--2'], ['uriFormat' => 'some-uri/{slug}', 'slug' => 'With--URL--2']],
+            [['uri' => 'some-uri/With--URL--1--2'], ['uriFormat' => 'some-uri/{slug}', 'slug' => 'With--URL--1']],
             [['uri' => 'different-uri/With--URL--1'], ['uriFormat' => 'different-uri/{slug}', 'slug' => 'With--URL--1']],
         ];
     }

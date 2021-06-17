@@ -19,6 +19,7 @@ use craft\errors\ShellCommandException;
 use craft\events\BackupEvent;
 use craft\events\RestoreEvent;
 use craft\helpers\App;
+use craft\helpers\Db;
 use craft\helpers\FileHelper;
 use craft\helpers\StringHelper;
 use mikehaertl\shellcommand\Command as ShellCommand;
@@ -41,8 +42,10 @@ use yii\db\Exception as DbException;
  */
 class Connection extends \yii\db\Connection
 {
-    // Constants
-    // =========================================================================
+    use PrimaryReplicaTrait;
+
+    const DRIVER_MYSQL = 'mysql';
+    const DRIVER_PGSQL = 'pgsql';
 
     /**
      * @event BackupEvent The event that is triggered before the backup is created.
@@ -64,9 +67,6 @@ class Connection extends \yii\db\Connection
      */
     const EVENT_AFTER_RESTORE_BACKUP = 'afterRestoreBackup';
 
-    // Static
-    // =========================================================================
-
     /**
      * Creates a new Connection instance based off the given DbConfig object.
      *
@@ -80,9 +80,6 @@ class Connection extends \yii\db\Connection
         return Craft::createObject($config);
     }
 
-    // Properties
-    // =========================================================================
-
     /**
      * @var bool|null whether the database supports 4+ byte characters
      * @see getSupportsMb4()
@@ -91,27 +88,13 @@ class Connection extends \yii\db\Connection
     private $_supportsMb4;
 
     /**
-     * @var string[]
-     * @see quoteTableName()
-     */
-    private $_quotedTableNames;
-    /**
-     * @var string[]
-     * @see quoteColumnName()
-     */
-    private $_quotedColumnNames;
-
-    // Public Methods
-    // =========================================================================
-
-    /**
      * Returns whether this is a MySQL connection.
      *
      * @return bool
      */
     public function getIsMysql(): bool
     {
-        return $this->getDriverName() === DbConfig::DRIVER_MYSQL;
+        return $this->getDriverName() === Connection::DRIVER_MYSQL;
     }
 
     /**
@@ -121,18 +104,18 @@ class Connection extends \yii\db\Connection
      */
     public function getIsPgsql(): bool
     {
-        return $this->getDriverName() === DbConfig::DRIVER_PGSQL;
+        return $this->getDriverName() === Connection::DRIVER_PGSQL;
     }
 
     /**
      * Returns the version of the DB.
      *
      * @return string
+     * @deprecated in 3.4.21. Use [[\yii\db\Schema::getServerVersion()]] instead.
      */
     public function getVersion(): string
     {
-        $version = $this->getMasterPdo()->getAttribute(\PDO::ATTR_SERVER_VERSION);
-        return App::normalizeVersion($version);
+        return App::normalizeVersion($this->getSchema()->getServerVersion());
     }
 
     /**
@@ -195,6 +178,16 @@ class Connection extends \yii\db\Connection
     }
 
     /**
+     * @inheritdoc
+     * @since 3.4.11
+     */
+    public function close()
+    {
+        parent::close();
+        $this->_supportsMb4 = null;
+    }
+
+    /**
      * Returns the path for a new backup file.
      *
      * @return string
@@ -203,20 +196,27 @@ class Connection extends \yii\db\Connection
     public function getBackupFilePath(): string
     {
         // Determine the backup file path
-        $currentVersion = 'v' . Craft::$app->getVersion();
-        $systemName = FileHelper::sanitizeFilename($this->_getFixedSystemName(), ['asciiOnly' => true]);
-        $filename = ($systemName ? $systemName . '_' : '') . gmdate('ymd_His') . '_' . strtolower(StringHelper::randomString(10)) . '_' . $currentVersion . '.sql';
-        return Craft::$app->getPath()->getDbBackupPath() . '/' . mb_strtolower($filename);
+        $systemName = mb_strtolower(FileHelper::sanitizeFilename($this->_getFixedSystemName(), [
+            'asciiOnly' => true,
+        ]));
+        $filename = ($systemName ? $systemName . '--' : '') . gmdate('Y-m-d-His') . '--v' . Craft::$app->getVersion();
+        $backupPath = Craft::$app->getPath()->getDbBackupPath();
+        $path = $backupPath . '/' . $filename . '.sql';
+        $i = 0;
+        while (file_exists($path)) {
+            $path = $backupPath . '/' . $filename . '--' . ++$i . '.sql';
+        }
+        return $path;
     }
 
     /**
-     * Returns the raw database table names that should be ignored by default.
+     * Returns the core table names whose data should be excluded from database backups.
      *
      * @return string[]
      */
     public function getIgnoredBackupTables(): array
     {
-        $tables = [
+        return [
             Table::ASSETINDEXDATA,
             Table::ASSETTRANSFORMINDEX,
             Table::SESSIONS,
@@ -226,14 +226,6 @@ class Connection extends \yii\db\Connection
             '{{%cache}}',
             '{{%templatecachecriteria}}',
         ];
-
-        $schema = $this->getSchema();
-
-        foreach ($tables as $i => $table) {
-            $tables[$i] = $schema->getRawTableName($table);
-        }
-
-        return $tables;
     }
 
     /**
@@ -263,12 +255,18 @@ class Connection extends \yii\db\Connection
      */
     public function backupTo(string $filePath)
     {
+        // Fire a 'beforeCreateBackup' event
+        $event = new BackupEvent([
+            'file' => $filePath,
+            'ignoreTables' => $this->getIgnoredBackupTables(),
+        ]);
+        $this->trigger(self::EVENT_BEFORE_CREATE_BACKUP, $event);
+
         // Determine the command that should be executed
         $backupCommand = Craft::$app->getConfig()->getGeneral()->backupCommand;
 
         if ($backupCommand === null) {
-            $schema = $this->getSchema();
-            $backupCommand = $schema->getDefaultBackupCommand();
+            $backupCommand = $this->getSchema()->getDefaultBackupCommand($event->ignoreTables);
         }
 
         if ($backupCommand === false) {
@@ -279,20 +277,35 @@ class Connection extends \yii\db\Connection
         $backupCommand = $this->_parseCommandTokens($backupCommand, $filePath);
         $command = $this->_createShellCommand($backupCommand);
 
-        // Fire a 'beforeCreateBackup' event
-        if ($this->hasEventHandlers(self::EVENT_BEFORE_CREATE_BACKUP)) {
-            $this->trigger(self::EVENT_BEFORE_CREATE_BACKUP, new BackupEvent([
-                'file' => $filePath
-            ]));
-        }
-
         $this->_executeDatabaseShellCommand($command);
 
         // Fire an 'afterCreateBackup' event
         if ($this->hasEventHandlers(self::EVENT_AFTER_CREATE_BACKUP)) {
             $this->trigger(self::EVENT_AFTER_CREATE_BACKUP, new BackupEvent([
-                'file' => $filePath
+                'file' => $filePath,
             ]));
+        }
+
+        $generalConfig = Craft::$app->getConfig()->getGeneral();
+
+        if ($generalConfig->maxBackups) {
+            $backupPath = Craft::$app->getPath()->getDbBackupPath();
+
+            // Grab all .sql files in the backup folder.
+            $files = glob($backupPath . DIRECTORY_SEPARATOR . '*.sql');
+
+            // Sort them by file modified time descending (newest first).
+            usort($files, static function($a, $b) {
+                return filemtime($a) < filemtime($b);
+            });
+
+            if (count($files) >= $generalConfig->maxBackups) {
+                $backupsToDelete = array_slice($files, $generalConfig->maxBackups);
+
+                foreach ($backupsToDelete as $backupToDelete) {
+                    FileHelper::unlink($backupToDelete);
+                }
+            }
         }
     }
 
@@ -305,12 +318,18 @@ class Connection extends \yii\db\Connection
      */
     public function restore(string $filePath)
     {
+        // Fire a 'beforeRestoreBackup' event
+        if ($this->hasEventHandlers(self::EVENT_BEFORE_RESTORE_BACKUP)) {
+            $this->trigger(self::EVENT_BEFORE_RESTORE_BACKUP, new RestoreEvent([
+                'file' => $filePath,
+            ]));
+        }
+
         // Determine the command that should be executed
         $restoreCommand = Craft::$app->getConfig()->getGeneral()->restoreCommand;
 
         if ($restoreCommand === null) {
-            $schema = $this->getSchema();
-            $restoreCommand = $schema->getDefaultRestoreCommand();
+            $restoreCommand = $this->getSchema()->getDefaultRestoreCommand();
         }
 
         if ($restoreCommand === false) {
@@ -321,19 +340,12 @@ class Connection extends \yii\db\Connection
         $restoreCommand = $this->_parseCommandTokens($restoreCommand, $filePath);
         $command = $this->_createShellCommand($restoreCommand);
 
-        // Fire a 'beforeRestoreBackup' event
-        if ($this->hasEventHandlers(self::EVENT_BEFORE_RESTORE_BACKUP)) {
-            $this->trigger(self::EVENT_BEFORE_RESTORE_BACKUP, new RestoreEvent([
-                'file' => $filePath
-            ]));
-        }
-
         $this->_executeDatabaseShellCommand($command);
 
         // Fire an 'afterRestoreBackup' event
         if ($this->hasEventHandlers(self::EVENT_AFTER_RESTORE_BACKUP)) {
             $this->trigger(self::EVENT_AFTER_RESTORE_BACKUP, new BackupEvent([
-                'file' => $filePath
+                'file' => $filePath,
             ]));
         }
     }
@@ -345,28 +357,6 @@ class Connection extends \yii\db\Connection
     public function quoteDatabaseName(string $name): string
     {
         return $this->getSchema()->quoteTableName($name);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function quoteTableName($name)
-    {
-        if (isset($this->_quotedTableNames[$name])) {
-            return $this->_quotedTableNames[$name];
-        }
-        return $this->_quotedTableNames[$name] = parent::quoteTableName($name);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function quoteColumnName($name)
-    {
-        if (isset($this->_quotedColumnNames[$name])) {
-            return $this->_quotedColumnNames[$name];
-        }
-        return $this->_quotedColumnNames[$name] = parent::quoteColumnName($name);
     }
 
     /**
@@ -412,60 +402,33 @@ class Connection extends \yii\db\Connection
     }
 
     /**
-     * Returns a primary key name based on the table and column names.
+     * Generates a primary key name.
      *
-     * @param string $table
-     * @param string|array $columns
      * @return string
      */
-    public function getPrimaryKeyName(string $table, $columns): string
+    public function getPrimaryKeyName(): string
     {
-        $table = $this->_getTableNameWithoutPrefix($table);
-        if (is_string($columns)) {
-            $columns = StringHelper::split($columns);
-        }
-        $name = $this->tablePrefix . $table . '_' . implode('_', $columns) . '_pk';
-
-        return $this->trimObjectName($name);
+        return $this->_objectName('pk');
     }
 
     /**
-     * Returns a foreign key name based on the table and column names.
+     * Generates a foreign key name.
      *
-     * @param string $table
-     * @param string|array $columns
      * @return string
      */
-    public function getForeignKeyName(string $table, $columns): string
+    public function getForeignKeyName(): string
     {
-        $table = $this->_getTableNameWithoutPrefix($table);
-        if (is_string($columns)) {
-            $columns = StringHelper::split($columns);
-        }
-        $name = $this->tablePrefix . $table . '_' . implode('_', $columns) . '_fk';
-
-        return $this->trimObjectName($name);
+        return $this->_objectName('fk');
     }
 
     /**
-     * Returns an index name based on the table, column names, and whether
-     * it should be unique.
+     * Generates an index name.
      *
-     * @param string $table
-     * @param string|array $columns
-     * @param bool $unique
-     * @param bool $foreignKey
      * @return string
      */
-    public function getIndexName(string $table, $columns, bool $unique = false, bool $foreignKey = false): string
+    public function getIndexName(): string
     {
-        $table = $this->_getTableNameWithoutPrefix($table);
-        if (is_string($columns)) {
-            $columns = StringHelper::split($columns);
-        }
-        $name = $this->tablePrefix . $table . '_' . implode('_', $columns) . ($unique ? '_unq' : '') . ($foreignKey ? '_fk' : '_idx');
-
-        return $this->trimObjectName($name);
+        return $this->_objectName('idx');
     }
 
     /**
@@ -473,6 +436,7 @@ class Connection extends \yii\db\Connection
      *
      * @param string $name
      * @return string
+     * @deprecated in 3.6.0
      */
     public function trimObjectName(string $name): string
     {
@@ -510,19 +474,15 @@ class Connection extends \yii\db\Connection
         return $name;
     }
 
-    // Private Methods
-    // =========================================================================
-
     /**
-     * Returns a table name without the table prefix
+     * Generates a FK, index, or PK name.
      *
-     * @param string $table
+     * @param string $prefix
      * @return string
      */
-    private function _getTableNameWithoutPrefix(string $table): string
+    private function _objectName(string $prefix): string
     {
-        $table = str_replace('%', '', $table);
-        return $this->getSchema()->getRawTableName($table);
+        return $this->tablePrefix . $prefix . '_' . StringHelper::randomString();
     }
 
     /**
@@ -554,15 +514,17 @@ class Connection extends \yii\db\Connection
      */
     private function _parseCommandTokens(string $command, $file): string
     {
-        $dbConfig = Craft::$app->getConfig()->getDb();
+        $parsed = Db::parseDsn($this->dsn);
+        $username = $this->getIsPgsql() && !empty($parsed['user']) ? $parsed['user'] : $this->username;
+        $password = $this->getIsPgsql() && !empty($parsed['password']) ? $parsed['password'] : $this->password;
         $tokens = [
             '{file}' => $file,
-            '{port}' => $dbConfig->port,
-            '{server}' => $dbConfig->server,
-            '{user}' => $dbConfig->user,
-            '{password}' => addslashes(str_replace('$', '\\$', $dbConfig->password)),
-            '{database}' => $dbConfig->database,
-            '{schema}' => $dbConfig->schema,
+            '{port}' => $parsed['port'] ?? '',
+            '{server}' => $parsed['host'] ?? '',
+            '{user}' => $username,
+            '{password}' => addslashes(str_replace('$', '\\$', $password)),
+            '{database}' => $parsed['dbname'] ?? '',
+            '{schema}' => $this->getSchema()->defaultSchema ?? '',
         ];
 
         return str_replace(array_keys($tokens), $tokens, $command);
@@ -578,7 +540,11 @@ class Connection extends \yii\db\Connection
 
         // Nuke any temp connection files that might have been created.
         try {
-            FileHelper::clearDirectory(Craft::$app->getPath()->getTempPath(false));
+            if ($this->getIsMysql()) {
+                /** @var craft\db\mysql\Schema $schema */
+                $schema = $this->getSchema();
+                @unlink($schema->tempMyCnfPath);
+            }
         } catch (InvalidArgumentException $e) {
             // the directory doesn't exist
         }

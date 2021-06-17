@@ -10,6 +10,8 @@ namespace crafttests\unit\composer;
 use Composer\Config;
 use Composer\Downloader\DownloadManager;
 use Composer\IO\NullIO;
+use Composer\Util\Loop;
+use Composer\Util\ProcessExecutor;
 use craft\composer\Factory;
 use craft\test\TestCase;
 use UnitTester;
@@ -23,9 +25,6 @@ use UnitTester;
  */
 class FactoryTest extends TestCase
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var Factory
      */
@@ -36,9 +35,6 @@ class FactoryTest extends TestCase
      */
     protected $tester;
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -47,18 +43,20 @@ class FactoryTest extends TestCase
         $this->factory = new Factory();
     }
 
-    // Tests
-    // =========================================================================
-
     /**
      * Test creating an archive manager which doesnt have zip and phar archivers. .
      */
     public function testCreateArchiveManager()
     {
         $config = new Config();
-        $downloadManager = new DownloadManager(new NullIO());
-        $archiveManager = $this->factory->createArchiveManager($config, $downloadManager);
+        $io = new NullIO();
+        $downloadManager = new DownloadManager($io);
+        $httpDownloader = Factory::createHttpDownloader($io, $config);
+        $process = new ProcessExecutor($io);
+        $loop = new Loop($httpDownloader, $process);
 
-        $this->assertSame([], $this->getInaccessibleProperty($archiveManager, 'archivers'));
+        $archiveManager = $this->factory->createArchiveManager($config, $downloadManager, $loop);
+
+        self::assertSame([], $this->getInaccessibleProperty($archiveManager, 'archivers'));
     }
 }

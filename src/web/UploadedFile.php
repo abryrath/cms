@@ -19,9 +19,6 @@ use yii\base\InvalidConfigException;
  */
 class UploadedFile extends \yii\web\UploadedFile
 {
-    // Public Methods
-    // =========================================================================
-
     /**
      * Returns an instance of the specified uploaded file. The name can be a plain string or a string like an array
      * element (e.g. 'Post[imageFile]', or 'Post[0][imageFile]').
@@ -33,7 +30,7 @@ class UploadedFile extends \yii\web\UploadedFile
      */
     public static function getInstanceByName($name, bool $ensureTempFileExists = true)
     {
-        /** @var static $instance */
+        /* @var static $instance */
         $instance = parent::getInstanceByName(self::_normalizeName($name));
         if ($instance === null) {
             return null;
@@ -60,7 +57,7 @@ class UploadedFile extends \yii\web\UploadedFile
     public static function getInstancesByName($name, $lookForSingleInstance = true, $ensureTempFilesExist = true): array
     {
         $name = self::_normalizeName($name);
-        /** @var static[] $instances */
+        /* @var static[] $instances */
         $instances = parent::getInstancesByName($name);
 
         if (empty($instances) && $lookForSingleInstance) {
@@ -138,9 +135,6 @@ class UploadedFile extends \yii\web\UploadedFile
 
         return $mimeType;
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Swaps dot notation for the normal format.

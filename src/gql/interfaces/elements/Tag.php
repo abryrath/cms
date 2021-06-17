@@ -7,10 +7,11 @@
 
 namespace craft\gql\interfaces\elements;
 
-use craft\elements\Tag as TagElement;
 use craft\gql\GqlEntityRegistry;
 use craft\gql\interfaces\Element;
+use craft\gql\TypeManager;
 use craft\gql\types\generators\TagType;
+use craft\helpers\Gql;
 use GraphQL\Type\Definition\InterfaceType;
 use GraphQL\Type\Definition\Type;
 
@@ -43,9 +44,7 @@ class Tag extends Element
             'name' => static::getName(),
             'fields' => self::class . '::getFieldDefinitions',
             'description' => 'This is the interface implemented by all tags.',
-            'resolveType' => function(TagElement $value) {
-                return $value->getGqlTypeName();
-            }
+            'resolveType' => self::class . '::resolveElementTypeName',
         ]));
 
         TagType::generateTypes();
@@ -66,17 +65,19 @@ class Tag extends Element
      */
     public static function getFieldDefinitions(): array
     {
-        return array_merge(parent::getFieldDefinitions(), [
+        // @TODO Remove the `uri` field for Assets.
+        return TypeManager::prepareFieldDefinitions(array_merge(parent::getFieldDefinitions(), [
             'groupId' => [
                 'name' => 'groupId',
                 'type' => Type::int(),
-                'description' => 'The ID of the group that contains the tag.'
+                'description' => 'The ID of the group that contains the tag.',
             ],
             'groupHandle' => [
                 'name' => 'groupHandle',
                 'type' => Type::string(),
-                'description' => 'The handle of the group that contains the tag.'
-            ]
-        ]);
+                'description' => 'The handle of the group that contains the tag.',
+                'complexity' => Gql::singleQueryComplexity(),
+            ],
+        ]), self::getName());
     }
 }

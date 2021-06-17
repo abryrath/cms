@@ -21,9 +21,6 @@ use craft\helpers\Image as ImageHelper;
  */
 class Svg extends Image
 {
-    // Constants
-    // =========================================================================
-
     const SVG_WIDTH_RE = '/(<svg[^>]*\swidth=")([\d\.]+)([a-z]*)"/i';
     const SVG_HEIGHT_RE = '/(<svg[^>]*\sheight=")([\d\.]+)([a-z]*)"/i';
     const SVG_VIEWBOX_RE = '/(<svg[^>]*\sviewBox=")(-?[\d.]+(?:,|\s)-?[\d.]+(?:,|\s)-?([\d.]+)(?:,|\s)(-?[\d.]+))"/i';
@@ -31,9 +28,6 @@ class Svg extends Image
     const SVG_TAG_RE = '/<svg/i';
     const SVG_CLEANUP_WIDTH_RE = '/(<svg[^>]*\s)width="[\d\.]+%"/i';
     const SVG_CLEANUP_HEIGHT_RE = '/(<svg[^>]*\s)height="[\d\.]+%"/i';
-
-    // Properties
-    // =========================================================================
 
     /**
      * @var string|null
@@ -49,9 +43,6 @@ class Svg extends Image
      * @var int|null
      */
     private $_width;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -87,14 +78,14 @@ class Svg extends Image
             throw new ImageException(Craft::t('app', 'No file exists at the given path.'));
         }
 
-        list($width, $height) = ImageHelper::imageSize($path);
-
         $svg = file_get_contents($path);
 
         if ($svg === false) {
             Craft::error('Tried to read the SVG contents at ' . $path . ', but could not.', __METHOD__);
             throw new ImageException(Craft::t('app', 'Could not read SVG contents.'));
         }
+
+        [$width, $height] = ImageHelper::parseSvgSize($svg);
 
         // If the size is defined by viewbox only, add in width and height attributes
         if (!preg_match(self::SVG_WIDTH_RE, $svg) && preg_match(self::SVG_HEIGHT_RE, $svg)) {
@@ -191,7 +182,7 @@ class Svg extends Image
                     'right' => 'Max',
                     'top' => 'Min',
                     'bottom' => 'Max',
-                    '-' => 'Y'
+                    '-' => 'Y',
                 ]) . ' slice';
 
             // Add/modify aspect ratio information

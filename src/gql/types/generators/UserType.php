@@ -8,11 +8,14 @@
 namespace craft\gql\types\generators;
 
 use Craft;
-use craft\base\Field;
 use craft\elements\User as UserElement;
+use craft\gql\base\Generator;
 use craft\gql\base\GeneratorInterface;
+use craft\gql\base\ObjectType;
+use craft\gql\base\SingleGeneratorInterface;
 use craft\gql\GqlEntityRegistry;
 use craft\gql\interfaces\elements\User as UserInterface;
+use craft\gql\TypeManager;
 use craft\gql\types\elements\User;
 
 /**
@@ -21,35 +24,35 @@ use craft\gql\types\elements\User;
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @since 3.3.0
  */
-class UserType implements GeneratorInterface
+class UserType extends Generator implements GeneratorInterface, SingleGeneratorInterface
 {
     /**
      * @inheritdoc
      */
     public static function generateTypes($context = null): array
     {
-        $gqlTypes = [];
+        // Users have no context
+        $type = static::generateType($context);
+        return [$type->name => $type];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function generateType($context): ObjectType
+    {
+        // Users don't have different types, so the context for a user will be the same every time.
+        $context = $context ?: Craft::$app->getFields()->getLayoutByType(UserElement::class);
+
         $typeName = UserElement::gqlTypeNameByContext(null);
+        $contentFieldGqlTypes = self::getContentFields($context);
+        $userFields = TypeManager::prepareFieldDefinitions(array_merge(UserInterface::getFieldDefinitions(), $contentFieldGqlTypes), $typeName);
 
-        $contentFields = Craft::$app->getFields()->getLayoutByType(UserElement::class)->getFields();
-        $contentFieldGqlTypes = [];
-
-        /** @var Field $contentField */
-        foreach ($contentFields as $contentField) {
-            $contentFieldGqlTypes[$contentField->handle] = $contentField->getContentGqlType();
-        }
-
-        $userFields = array_merge(UserInterface::getFieldDefinitions(), $contentFieldGqlTypes);
-
-        // Generate a type for each entry type
-        $gqlTypes[$typeName] = GqlEntityRegistry::getEntity($typeName) ?: GqlEntityRegistry::createEntity($typeName, new User([
+        return GqlEntityRegistry::getEntity($typeName) ?: GqlEntityRegistry::createEntity($typeName, new User([
             'name' => $typeName,
             'fields' => function() use ($userFields) {
                 return $userFields;
-            }
+            },
         ]));
-
-
-        return $gqlTypes;
     }
 }

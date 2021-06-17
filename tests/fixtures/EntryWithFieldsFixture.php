@@ -7,7 +7,7 @@
 
 namespace crafttests\fixtures;
 
-use craft\test\fixtures\elements\EntryFixture as BaseEntriesFixture;
+use craft\test\fixtures\elements\EntryFixture as BaseEntryFixture;
 
 /**
  * Class EntryWithFieldsFixture
@@ -16,11 +16,8 @@ use craft\test\fixtures\elements\EntryFixture as BaseEntriesFixture;
  * @author Global Network Group | Giel Tettelaar <giel@yellowflash.net>
  * @since 3.2
  */
-class EntryWithFieldsFixture extends BaseEntriesFixture
+class EntryWithFieldsFixture extends BaseEntryFixture
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @inheritdoc
      */

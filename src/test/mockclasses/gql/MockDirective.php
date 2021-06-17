@@ -21,7 +21,7 @@ class MockDirective extends Directive
             'name' => static::name(),
             'locations' => [
                 DirectiveLocation::FIELD,
-            ]
+            ],
         ]);
     }
 
@@ -41,6 +41,4 @@ class MockDirective extends Directive
         $prefix = $arguments['prefix'] ?? 'mock';
         return $prefix . $value;
     }
-
-
 }

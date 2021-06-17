@@ -19,6 +19,9 @@ use craft\helpers\ArrayHelper;
 use craft\helpers\Db;
 use craft\helpers\ElementHelper;
 use craft\helpers\Gql;
+use craft\helpers\Gql as GqlHelper;
+use craft\models\GqlSchema;
+use craft\services\Gql as GqlService;
 use GraphQL\Type\Definition\Type;
 
 /**
@@ -29,9 +32,6 @@ use GraphQL\Type\Definition\Type;
  */
 class Categories extends BaseRelationField
 {
-    // Static
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -63,9 +63,6 @@ class Categories extends BaseRelationField
     {
         return CategoryQuery::class;
     }
-
-    // Properties
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -102,16 +99,13 @@ class Categories extends BaseRelationField
      */
     protected $sortable = false;
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
     public function normalizeValue($value, ElementInterface $element = null)
     {
         if (is_array($value)) {
-            /** @var Category[] $categories */
+            /* @var Category[] $categories */
             $categories = Category::find()
                 ->siteId($this->targetSiteId($element))
                 ->id(array_values(array_filter($value)))
@@ -119,12 +113,12 @@ class Categories extends BaseRelationField
                 ->all();
 
             // Fill in any gaps
-            $categoriesService = Craft::$app->getCategories();
-            $categoriesService->fillGapsInCategories($categories);
+            $structuresService = Craft::$app->getStructures();
+            $structuresService->fillGapsInElements($categories);
 
             // Enforce the branch limit
             if ($this->branchLimit) {
-                $categoriesService->applyBranchLimitToCategories($categories, $this->branchLimit);
+                $structuresService->applyBranchLimitToElements($categories, $this->branchLimit);
             }
 
             $value = ArrayHelper::getColumn($categories, 'id');
@@ -136,7 +130,7 @@ class Categories extends BaseRelationField
     /**
      * @inheritdoc
      */
-    public function getInputHtml($value, ElementInterface $element = null): string
+    protected function inputHtml($value, ElementInterface $element = null): string
     {
         // Make sure the field is set to a valid category group
         if ($this->source) {
@@ -147,7 +141,7 @@ class Categories extends BaseRelationField
             return '<p class="error">' . Craft::t('app', 'This field is not set to a valid category group.') . '</p>';
         }
 
-        return parent::getInputHtml($value, $element);
+        return parent::inputHtml($value, $element);
     }
 
     /**
@@ -163,6 +157,14 @@ class Categories extends BaseRelationField
 
     /**
      * @inheritdoc
+     */
+    public function includeInGqlSchema(GqlSchema $schema): bool
+    {
+        return Gql::canQueryCategories($schema);
+    }
+
+    /**
+     * @inheritdoc
      * @since 3.3.0
      */
     public function getContentGqlType()
@@ -172,6 +174,7 @@ class Categories extends BaseRelationField
             'type' => Type::listOf(CategoryInterface::getType()),
             'args' => CategoryArguments::getArguments(),
             'resolve' => CategoryResolver::class . '::resolve',
+            'complexity' => GqlHelper::relatedArgumentComplexity(GqlService::GRAPHQL_COMPLEXITY_EAGER_LOAD),
         ];
     }
 

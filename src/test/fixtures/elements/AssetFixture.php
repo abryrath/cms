@@ -8,7 +8,7 @@
 namespace craft\test\fixtures\elements;
 
 use Craft;
-use craft\base\Element;
+use craft\base\ElementInterface;
 use craft\elements\Asset;
 use craft\helpers\FileHelper;
 use craft\records\VolumeFolder;
@@ -16,25 +16,13 @@ use craft\records\VolumeFolder;
 /**
  * Class AssetFixture.
  *
- * Credit to: https://github.com/robuust/craft-fixtures
- *
- * @todo https://github.com/robuust/craft-fixtures/blob/master/src/base/AssetFixture.php#L60 ? Why override?
- *
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @author Robuust digital | Bob Olde Hampsink <bob@robuust.digital>
  * @author Global Network Group | Giel Tettelaar <giel@yellowflash.net>
  * @since  3.2
  */
-abstract class AssetFixture extends ElementFixture
+abstract class AssetFixture extends BaseElementFixture
 {
-    // Public Properties
-    // =========================================================================
-
-    /**
-     * @inheritdoc
-     */
-    public $modelClass = Asset::class;
-
     /**
      * @var array
      */
@@ -51,17 +39,14 @@ abstract class AssetFixture extends ElementFixture
     protected $files = [];
 
     /**
-     * @var $string
+     * @var string
      */
     protected $sourceAssetPath;
 
     /**
-     * @var $string
+     * @var string
      */
     protected $destinationAssetPath;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -79,8 +64,8 @@ abstract class AssetFixture extends ElementFixture
             ])->id;
         }
 
-        $this->sourceAssetPath = dirname(__FILE__, 5) . '/tests/_craft/assets/';
-        $this->destinationAssetPath = dirname(__FILE__, 5) . '/tests/_craft/storage/runtime/temp/';
+        $this->sourceAssetPath = Craft::$app->getPath()->getTestsPath() . '/_craft/assets/';
+        $this->destinationAssetPath = Craft::$app->getPath()->getStoragePath() . '/runtime/temp/';
 
         if (!is_dir($this->destinationAssetPath)) {
             FileHelper::createDirectory($this->destinationAssetPath);
@@ -91,25 +76,6 @@ abstract class AssetFixture extends ElementFixture
         foreach ($data as $fileName) {
             $this->files[] = $fileName;
         }
-    }
-
-    /**
-     * Get asset model.
-     *
-     * @param array $data
-     * @return Element
-     */
-    public function getElement(array $data = null)
-    {
-        /* @var Asset $element */
-        $element = parent::getElement($data);
-
-        if ($data === null) {
-            $element->avoidFilenameConflicts = true;
-            $element->setScenario(Asset::SCENARIO_REPLACE);
-        }
-
-        return $element;
     }
 
     /**
@@ -134,14 +100,11 @@ abstract class AssetFixture extends ElementFixture
         FileHelper::clearDirectory($this->destinationAssetPath);
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
-    protected function isPrimaryKey(string $key): bool
+    protected function createElement(): ElementInterface
     {
-        return parent::isPrimaryKey($key) || in_array($key, ['volumeId', 'folderId', 'filename', 'title']);
+        return new Asset();
     }
 }

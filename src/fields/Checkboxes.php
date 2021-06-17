@@ -10,6 +10,8 @@ namespace craft\fields;
 use Craft;
 use craft\base\ElementInterface;
 use craft\fields\data\MultiOptionsFieldData;
+use craft\helpers\ArrayHelper;
+use craft\helpers\Html;
 
 /**
  * Checkboxes represents a Checkboxes field.
@@ -19,9 +21,6 @@ use craft\fields\data\MultiOptionsFieldData;
  */
 class Checkboxes extends BaseOptionsField
 {
-    // Static
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -38,16 +37,10 @@ class Checkboxes extends BaseOptionsField
         return MultiOptionsFieldData::class;
     }
 
-    // Properties
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
     public $multi = true;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -61,17 +54,29 @@ class Checkboxes extends BaseOptionsField
     /**
      * @inheritdoc
      */
-    public function getInputHtml($value, ElementInterface $element = null): string
+    public function useFieldset(): bool
     {
+        return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function inputHtml($value, ElementInterface $element = null): string
+    {
+        /* @var MultiOptionsFieldData $value */
+        if (ArrayHelper::contains($value, 'valid', false, true)) {
+            Craft::$app->getView()->setInitialDeltaValue($this->handle, null);
+        }
+
+        $id = Html::id($this->handle);
         return Craft::$app->getView()->renderTemplate('_includes/forms/checkboxGroup', [
+            'instructionsId' => "$id-instructions",
             'name' => $this->handle,
             'values' => $value,
             'options' => $this->translatedOptions(),
         ]);
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

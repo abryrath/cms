@@ -9,6 +9,7 @@ namespace craft\db;
 
 use craft\helpers\ArrayHelper;
 use yii\base\BaseObject;
+use yii\base\InvalidConfigException;
 use yii\db\Connection as YiiConnection;
 use yii\db\Query as YiiQuery;
 use yii\db\QueryInterface;
@@ -26,7 +27,7 @@ use yii\di\Instance;
  *     'currentPage' => \Craft::$app->request->pageNum,
  * ]);
  *
- * $pageResults = $paginator->getResults();
+ * $pageResults = $paginator->getPageResults();
  * ```
  * ```twig
  * {% set paginator = create('craft\\db\\Paginator', [query, {
@@ -34,7 +35,7 @@ use yii\di\Instance;
  *     currentPage: craft.app.request.pageNum,
  * }]) %}
  *
- * {% set pageResults = paginator.getResults() %}
+ * {% set pageResults = paginator.getPageResults() %}
  * ```
  *
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
@@ -103,7 +104,7 @@ class Paginator extends BaseObject
 
     /**
      * @inheritdoc
-     * @throws \yii\base\InvalidConfigException
+     * @throws InvalidConfigException
      */
     public function init()
     {

@@ -10,7 +10,7 @@ namespace crafttests\fixtures;
 use Craft;
 use craft\records\AssetTransform;
 use craft\services\AssetTransforms;
-use craft\test\Fixture;
+use craft\test\ActiveFixture;
 
 /**
  * Class TransformsFixture
@@ -19,11 +19,8 @@ use craft\test\Fixture;
  * @author Global Network Group | Giel Tettelaar <giel@yellowflash.net>
  * @since 3.2
  */
-class TransformsFixture extends Fixture
+class TransformsFixture extends ActiveFixture
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -33,9 +30,6 @@ class TransformsFixture extends Fixture
      * @inheritdoc
      */
     public $modelClass = AssetTransform::class;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

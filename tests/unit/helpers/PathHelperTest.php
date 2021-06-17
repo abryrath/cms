@@ -20,36 +20,23 @@ use UnitTester;
  */
 class PathHelperTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UnitTester
      */
     protected $tester;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
-     * @dataProvider isPathContainedDataProviders
+     * @dataProvider ensurePathIsContainedDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param bool $expected
+     * @param string $path
      */
-    public function testIsPathContained($result, $input)
+    public function testEnsurePathIsContained(bool $expected, string $path)
     {
-        $isContained = Path::ensurePathIsContained($input);
-        $this->assertSame($result, $isContained);
+        self::assertSame($expected, Path::ensurePathIsContained($path));
     }
 
-    // Data Providers
-    // =========================================================================
-
-    public function isPathContainedDataProviders(): array
+    public function ensurePathIsContainedDataProvider(): array
     {
         return [
             [true, '/'],

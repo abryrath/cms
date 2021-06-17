@@ -10,6 +10,7 @@ namespace craft\services;
 use Craft;
 use craft\base\UtilityInterface;
 use craft\events\RegisterComponentTypesEvent;
+use craft\queue\QueueInterface;
 use craft\utilities\AssetIndexes;
 use craft\utilities\ClearCaches;
 use craft\utilities\DbBackup;
@@ -17,6 +18,8 @@ use craft\utilities\DeprecationErrors;
 use craft\utilities\FindAndReplace;
 use craft\utilities\Migrations;
 use craft\utilities\PhpInfo;
+use craft\utilities\ProjectConfig as ProjectConfigUtility;
+use craft\utilities\QueueManager;
 use craft\utilities\SystemMessages as SystemMessagesUtility;
 use craft\utilities\SystemReport;
 use craft\utilities\Updates as UpdatesUtility;
@@ -31,15 +34,12 @@ use yii\base\Component;
  */
 class Utilities extends Component
 {
-    // Constants
-    // =========================================================================
-
     /**
      * @event RegisterComponentTypesEvent The event that is triggered when registering utility types.
      *
      * Utility types must implement [[UtilityInterface]]. [[\craft\base\Utility]] provides a base implementation.
      *
-     * See [Utility Types](https://docs.craftcms.com/v3/utility-types.html) for documentation on creating utility types.
+     * See [Utility Types](https://craftcms.com/docs/3.x/extend/utility-types.html) for documentation on creating utility types.
      * ---
      * ```php
      * use craft\events\RegisterComponentTypesEvent;
@@ -56,9 +56,6 @@ class Utilities extends Component
      */
     const EVENT_REGISTER_UTILITY_TYPES = 'registerUtilityTypes';
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * Returns all available utility type classes.
      *
@@ -69,6 +66,7 @@ class Utilities extends Component
         $utilityTypes = [
             UpdatesUtility::class,
             SystemReport::class,
+            ProjectConfigUtility::class,
             PhpInfo::class,
         ];
 
@@ -80,6 +78,11 @@ class Utilities extends Component
             $utilityTypes[] = AssetIndexes::class;
         }
 
+        // Ensure we only implement queue if we can use the corresponding web based controller.
+        if (Craft::$app->getQueue() instanceof QueueInterface) {
+            $utilityTypes[] = QueueManager::class;
+        }
+
         $utilityTypes[] = ClearCaches::class;
         $utilityTypes[] = DeprecationErrors::class;
         $utilityTypes[] = DbBackup::class;
@@ -87,7 +90,7 @@ class Utilities extends Component
         $utilityTypes[] = Migrations::class;
 
         $event = new RegisterComponentTypesEvent([
-            'types' => $utilityTypes
+            'types' => $utilityTypes,
         ]);
         $this->trigger(self::EVENT_REGISTER_UTILITY_TYPES, $event);
 
@@ -120,8 +123,11 @@ class Utilities extends Component
      */
     public function checkAuthorization(string $class): bool
     {
-        /** @var string|UtilityInterface $class */
-        return Craft::$app->getUser()->checkPermission('utility:' . $class::id());
+        /* @var string|UtilityInterface $class */
+        $utilityId = $class::id();
+        $user = Craft::$app->getUser();
+
+        return $utilityId === ProjectConfigUtility::id() ? $user->getIsAdmin() : $user->checkPermission('utility:' . $utilityId);
     }
 
     /**
@@ -133,7 +139,7 @@ class Utilities extends Component
     public function getUtilityTypeById(string $id)
     {
         foreach ($this->getAllUtilityTypes() as $class) {
-            /** @var UtilityInterface $class */
+            /* @var UtilityInterface $class */
             if ($class::id() === $id) {
                 return $class;
             }

@@ -24,18 +24,12 @@ use yii\web\Response;
  */
 class UpdaterController extends BaseUpdaterController
 {
-    // Constants
-    // =========================================================================
-
     const ACTION_FORCE_UPDATE = 'force-update';
     const ACTION_BACKUP = 'backup';
     const ACTION_SERVER_CHECK = 'server-check';
     const ACTION_REVERT = 'revert';
     const ACTION_RESTORE_DB = 'restore-db';
     const ACTION_MIGRATE = 'migrate';
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -82,7 +76,7 @@ class UpdaterController extends BaseUpdaterController
             } else {
                 $firstAction = $this->finishedState([
                     'label' => Craft::t('app', 'Abort the update'),
-                    'status' => Craft::t('app', 'Update aborted.')
+                    'status' => Craft::t('app', 'Update aborted.'),
                 ]);
             }
             return $this->send([
@@ -91,7 +85,7 @@ class UpdaterController extends BaseUpdaterController
                     $firstAction,
                     $this->actionOption(Craft::t('app', 'Try again'), self::ACTION_BACKUP),
                     $this->actionOption(Craft::t('app', 'Continue anyway'), self::ACTION_MIGRATE),
-                ]
+                ],
             ]);
         }
 
@@ -114,7 +108,7 @@ class UpdaterController extends BaseUpdaterController
                 'options' => [
                     $this->actionOption(Craft::t('app', 'Try again'), self::ACTION_RESTORE_DB),
                     $this->actionOption(Craft::t('app', 'Continue anyway'), self::ACTION_MIGRATE),
-                ]
+                ],
             ]);
         }
 
@@ -176,7 +170,7 @@ class UpdaterController extends BaseUpdaterController
                 'options' => [
                     $this->actionOption(Craft::t('app', 'Revert update'), self::ACTION_REVERT),
                     $this->actionOption(Craft::t('app', 'Check again'), self::ACTION_SERVER_CHECK),
-                ]
+                ],
             ]);
         }
 
@@ -209,9 +203,6 @@ class UpdaterController extends BaseUpdaterController
         return $this->runMigrations($handles, self::ACTION_RESTORE_DB) ?? $this->sendFinished();
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -225,11 +216,9 @@ class UpdaterController extends BaseUpdaterController
      */
     protected function initialData(): array
     {
-        $request = Craft::$app->getRequest();
-
         // Set the things to install, if any
-        if (($install = $request->getBodyParam('install')) !== null) {
-            $packageNames = $request->getRequiredBodyParam('packageNames');
+        if (($install = $this->request->getBodyParam('install')) !== null) {
+            $packageNames = $this->request->getRequiredBodyParam('packageNames');
 
             $data = [
                 'install' => $this->_parseInstallParam($install),
@@ -267,7 +256,7 @@ class UpdaterController extends BaseUpdaterController
         }
 
         // Set the return URL, if any
-        if (($returnUrl = $request->getBodyParam('return')) !== null) {
+        if (($returnUrl = $this->request->getBodyParam('return')) !== null) {
             $data['returnUrl'] = strip_tags($returnUrl);
         }
 
@@ -285,7 +274,7 @@ class UpdaterController extends BaseUpdaterController
         // Is there anything to install/update?
         if (empty($this->data['install']) && empty($this->data['migrate'])) {
             return $this->finishedState([
-                'status' => Craft::t('app', 'Nothing to update.')
+                'status' => Craft::t('app', 'Nothing to update.'),
             ]);
         }
 
@@ -296,7 +285,7 @@ class UpdaterController extends BaseUpdaterController
                 'error' => str_replace(['<br>', '<br/>'], "\n\n", Craft::t('app', 'It looks like someone is currently performing a system update.<br>Only continue if you’re sure that’s not the case.')),
                 'options' => [
                     $this->actionOption(Craft::t('app', 'Continue'), self::ACTION_FORCE_UPDATE, ['submit' => true]),
-                ]
+                ],
             ];
         }
 
@@ -376,9 +365,6 @@ class UpdaterController extends BaseUpdaterController
 
         return parent::sendFinished($state);
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Parses the 'install` param and returns handle => version pairs.

@@ -7,6 +7,9 @@
 
 namespace craft\gql;
 
+use Craft;
+use craft\helpers\StringHelper;
+
 /**
  * Class GqlEntityRegistry
  *
@@ -21,6 +24,54 @@ class GqlEntityRegistry
     private static $_entities = [];
 
     /**
+     * @var string
+     */
+    private static $_prefix = null;
+
+    /**
+     * Prefix GQL type name with the configured prefix.
+     *
+     * @param string $typeName
+     * @return string
+     */
+    public static function prefixTypeName(string $typeName): string
+    {
+        $rootTypes = ['Query', 'Mutation', 'Subscription'];
+
+        if (Craft::$app->getConfig()->getGeneral()->prefixGqlRootTypes || !in_array($typeName, $rootTypes)) {
+            return self::getPrefix() . $typeName;
+        }
+
+        return $typeName;
+    }
+
+    /**
+     * Returns the type prefix.
+     *
+     * @return string|null
+     * @since 3.6.0
+     */
+    public static function getPrefix()
+    {
+        if (self::$_prefix === null) {
+            self::$_prefix = Craft::$app->getConfig()->getGeneral()->gqlTypePrefix;
+        }
+
+        return self::$_prefix;
+    }
+
+    /**
+     * Sets the type prefix.
+     *
+     * @param string $prefix
+     * @since 3.6.0
+     */
+    public static function setPrefix(string $prefix)
+    {
+        self::$_prefix = $prefix;
+    }
+
+    /**
      * Get a registered entity.
      *
      * @param string $entityName
@@ -28,6 +79,12 @@ class GqlEntityRegistry
      */
     public static function getEntity(string $entityName)
     {
+        // Check if we need to apply the prefix.
+        $prefix = self::getPrefix();
+        if ($prefix && !StringHelper::startsWith($entityName, $prefix)) {
+            $entityName = self::prefixTypeName($entityName);
+        }
+
         return self::$_entities[$entityName] ?? false;
     }
 
@@ -40,6 +97,9 @@ class GqlEntityRegistry
      */
     public static function createEntity(string $entityName, $entity)
     {
+        $entityName = self::prefixTypeName($entityName);
+        $entity->name = self::prefixTypeName($entity->name);
+
         self::$_entities[$entityName] = $entity;
 
         TypeLoader::registerType($entityName, function() use ($entity) {

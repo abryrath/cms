@@ -9,6 +9,7 @@ namespace craft\validators;
 
 use Craft;
 use craft\db\Query;
+use craft\db\Table;
 use craft\models\Section_SiteSettings;
 use yii\base\Exception;
 use yii\base\InvalidConfigException;
@@ -32,18 +33,13 @@ class SingleSectionUriValidator extends UriFormatValidator
 
         parent::validateAttribute($model, $attribute);
 
-        /** @var Section_SiteSettings $model */
-        // Make sure it's a valid URI
-        if (!(new UriValidator())->validate($model->uriFormat)) {
-            $this->addError($model, $attribute, Craft::t('app', '{attribute} is not a valid URI'));
-        }
-
+        /* @var Section_SiteSettings $model */
         $section = $model->getSection();
 
         // Make sure no other elements are using this URI already
         $query = (new Query())
-            ->from(['{{%elements_sites}} elements_sites'])
-            ->innerJoin('{{%elements}} elements', '[[elements.id]] = [[elements_sites.elementId]]')
+            ->from(['elements_sites' => Table::ELEMENTS_SITES])
+            ->innerJoin(['elements' => Table::ELEMENTS], '[[elements.id]] = [[elements_sites.elementId]]')
             ->where([
                 'elements_sites.siteId' => $model->siteId,
                 'elements.draftId' => null,
@@ -63,7 +59,7 @@ class SingleSectionUriValidator extends UriFormatValidator
 
         if ($section->id) {
             $query
-                ->innerJoin('{{%entries}} entries', '[[entries.id]] = [[elements.id]]')
+                ->innerJoin(['entries' => Table::ENTRIES], '[[entries.id]] = [[elements.id]]')
                 ->andWhere(['not', ['entries.sectionId' => $section->id]]);
         }
 
@@ -81,7 +77,7 @@ class SingleSectionUriValidator extends UriFormatValidator
             }
 
             $this->addError($model, $attribute, Craft::t('app', $message, [
-                'site' => Craft::t('site', $site->name)
+                'site' => Craft::t('site', $site->getName()),
             ]));
         }
     }

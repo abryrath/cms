@@ -23,9 +23,6 @@ use yii\db\Expression;
  */
 class m160807_144858_sites extends Migration
 {
-    // Static
-    // =========================================================================
-
     /**
      * @var array The site FK columns ([table, column, not null?, locale column])
      */
@@ -43,16 +40,10 @@ class m160807_144858_sites extends Migration
         [Table::TEMPLATECACHES, 'siteId', true, 'locale'],
     ];
 
-    // Properties
-    // =========================================================================
-
     /**
      * @var string|null The CASE SQL used to set site column values
      */
     protected $caseSql;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -91,18 +82,19 @@ class m160807_144858_sites extends Migration
             ->one($this->db);
 
         $locales = (new Query())
-            ->select(['locale'])
+            ->select(['uid', 'locale'])
             ->from(['{{%locales}}'])
             ->orderBy(['sortOrder' => SORT_ASC])
-            ->column($this->db);
+            ->pairs($this->db);
 
         $siteIdsByLocale = [];
         $this->caseSql = 'case';
         $languageCaseSql = 'case';
         $localePermissions = [];
         $permissionsCaseSql = 'case';
+        $sortOrder = 0;
 
-        foreach ($locales as $i => $locale) {
+        foreach ($locales as $uid => $locale) {
             $siteHandle = $this->locale2handle($locale);
             $language = $this->locale2language($locale);
 
@@ -110,9 +102,10 @@ class m160807_144858_sites extends Migration
                 'name' => "{$siteInfo['siteName']} ({$language})",
                 'handle' => $siteHandle,
                 'language' => $language,
-                'hasUrls' => 1,
+                'hasUrls' => true,
                 'baseUrl' => $siteInfo['siteUrl'],
-                'sortOrder' => $i + 1,
+                'sortOrder' => ++$sortOrder,
+                'uid' => $uid,
             ]);
 
             $siteId = $this->db->getLastInsertID();
@@ -146,7 +139,7 @@ class m160807_144858_sites extends Migration
         // Create the FK columns
         // ---------------------------------------------------------------------
 
-        foreach (self::$siteColumns as list($table, $column, $isNotNull, $localeColumn)) {
+        foreach (self::$siteColumns as [$table, $column, $isNotNull, $localeColumn]) {
             $this->addSiteColumn($table, $column, $isNotNull, $localeColumn);
         }
 
@@ -235,7 +228,7 @@ class m160807_144858_sites extends Migration
         // Drop the locale columns
         // ---------------------------------------------------------------------
 
-        foreach (self::$siteColumns as list($table, , , $localeColumn)) {
+        foreach (self::$siteColumns as [$table, , , $localeColumn]) {
             $this->dropColumn($table, $localeColumn);
         }
 
@@ -335,8 +328,8 @@ class m160807_144858_sites extends Migration
                         'or',
                         ['nestedUrlFormat' => null],
                         ['nestedUrlFormat' => ''],
-                        '[[nestedUrlFormat]] = [[uriFormat]]'
-                    ]
+                        '[[nestedUrlFormat]] = [[uriFormat]]',
+                    ],
                 ])
                 ->all($this->db);
 
@@ -401,13 +394,12 @@ class m160807_144858_sites extends Migration
                     Categories::class,
                     Entries::class,
                     Tags::class,
-                    Users::class
-                ]
+                    Users::class,
+                ],
             ])
             ->all($this->db);
 
         foreach ($fields as $field) {
-
             if ($field['settings'] === null) {
                 echo 'Field ' . $field['id'] . ' (' . $field['type'] . ') settings were null' . "\n";
                 $settings = [];
@@ -495,9 +487,6 @@ class m160807_144858_sites extends Migration
         }
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * Creates a new siteId column and migrates the locale data over
      *
@@ -514,7 +503,7 @@ class m160807_144858_sites extends Migration
 
         // Set the values
         $this->update($table, [
-            $column => new Expression(str_replace('%', "[[{$localeColumn}]]", $this->caseSql))
+            $column => new Expression(str_replace('%', "[[{$localeColumn}]]", $this->caseSql)),
         ], '', [], false);
 
         // In case there were any referenced locales that no longer exist.
@@ -540,7 +529,7 @@ class m160807_144858_sites extends Migration
             $localeParts = array_filter(preg_split('/[^a-zA-Z0-9]/', $locale));
 
             // Prefix with a random string so there's no chance of a conflict with other locales
-            return StringHelper::randomStringWithChars('abcdefghijklmnopqrstuvwxyz', 7) . ($localeParts ? '_' . implode('_', $localeParts) : '');
+            return StringHelper::randomString(7) . ($localeParts ? '_' . implode('_', $localeParts) : '');
         }
 
         return $locale;
@@ -590,7 +579,7 @@ class m160807_144858_sites extends Migration
             $language = 'en-US';
         }
 
-        /** @noinspection PhpUndefinedVariableInspection */
+        /* @noinspection PhpUndefinedVariableInspection */
         return $language;
     }
 }

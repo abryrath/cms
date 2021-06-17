@@ -15,16 +15,10 @@ namespace craft\fields\data;
  */
 class MultiOptionsFieldData extends \ArrayObject
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var OptionData[]
      */
     private $_options = [];
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * Returns the options.
@@ -55,7 +49,7 @@ class MultiOptionsFieldData extends \ArrayObject
         $value = (string)$value;
 
         foreach ($this as $selectedValue) {
-            /** @var OptionData $selectedValue */
+            /* @var OptionData $selectedValue */
             if ($value === $selectedValue->value) {
                 return true;
             }

@@ -22,9 +22,6 @@ use FunctionalTester;
  */
 class PageRenderChecksCest
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var string
      */
@@ -34,9 +31,6 @@ class PageRenderChecksCest
      * @var
      */
     public $currentUser;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @param FunctionalTester $I
@@ -49,10 +43,9 @@ class PageRenderChecksCest
 
         $I->amLoggedInAs($this->currentUser);
         $this->cpTrigger = Craft::$app->getConfig()->getGeneral()->cpTrigger;
-    }
 
-    // Tests
-    // =========================================================================
+        Craft::$app->setEdition(Craft::Pro);
+    }
 
     /**
      * @param FunctionalTester $I
@@ -61,120 +54,180 @@ class PageRenderChecksCest
      */
     public function test200Page(FunctionalTester $I, Example $example)
     {
-        $I->amOnPage('/'.$this->cpTrigger.$example['url']);
+        $I->amOnPage('/' . $this->cpTrigger . $example['url']);
         $I->seeInTitle($example['title']);
         $I->seeResponseCodeIs(200);
 
         if (isset($example['extraContent'])) {
             foreach ($example['extraContent'] as $extraContent) {
-                $I->see($extraContent);
+                if (isset($extraContent['rendered'])) {
+                    $I->see($extraContent['rendered']);
+                } else {
+                    $I->seeInSource($extraContent['source']);
+                }
             }
         }
     }
 
-    // Protected Methods
-    // =========================================================================
-
-    // Data providers
-    // =========================================================================
-
     /**
      * @return array
      */
-    protected function pagesDataProvider() : array
+    protected function pagesDataProvider(): array
     {
         return [
             ['url' => '/dashboard', 'title' => 'Dashboard'],
             ['url' => '/entries', 'title' => 'Entries'],
             ['url' => '/users', 'title' => 'Users'],
-            // TODO: fix globals fixture     ['url' => '/globals', 'title' => 'Globals'],
-            // TODO: Requires fixtures data. ['url' => '/categories', 'title' => 'Categories'],
 
             // Settings pages
-            ['url' => '/settings/general', 'title' => 'General Settings', 'extraContent' => [
-                'System Name',
-                'System Status',
-                'Time Zone',
-                'Login Page Logo'
-            ]],
-            ['url' => '/settings/sections', 'title' => 'Sections', 'extraContent' => [
-                'Craft CMS Test Section'
-            ]],
-            ['url' => '/settings/users', 'title' => 'User Settings', 'extraContent' => [
-                'User Groups',
-                'Fields',
-                'Test group1'
-            ]],
-            ['url' => '/settings/users/settings', 'title' => 'User Settings', 'extraContent' => [
-                'User Photo Location',
-                'Verify email addresses?',
-                'Allow public registration?'
-            ]],
-            ['url' => '/settings/users/fields', 'title' => 'User Settings', 'extraContent' => [
-                'Design your field layout'
-            ]],
+            [
+                'url' => '/settings/general', 'title' => 'General Settings', 'extraContent' => [
+                ['rendered' => 'System Name'],
+                ['rendered' => 'System Status'],
+                ['rendered' => 'Retry Duration'],
+                ['rendered' => 'Time Zone'],
+                ['rendered' => 'Login Page Logo'],
+                ['rendered' => 'Site Icon'],
+            ]
+            ],
+            [
+                'url' => '/settings/sections', 'title' => 'Sections', 'extraContent' => [
+                ['rendered' => 'New section']
+            ]
+            ],
+            [
+                'url' => '/settings/users', 'title' => 'User Settings', 'extraContent' => [
+                ['rendered' => 'User Groups'],
+                ['rendered' => 'Fields'],
+                ['rendered' => 'Settings'],
+                ['rendered' => 'New user group'],
+            ]
+            ],
+            [
+                'url' => '/settings/users/settings', 'title' => 'User Settings', 'extraContent' => [
+                ['rendered' => 'User Photo Volume'],
+                ['rendered' => 'Verify email addresses'],
+                ['rendered' => 'Allow public registration']
+            ]
+            ],
+            [
+                'url' => '/settings/users/fields', 'title' => 'User Settings', 'extraContent' => [
+                ['rendered' => 'Field Layout']
+            ]
+            ],
 
-            ['url' => '/settings/email', 'title' => 'Email Settings', 'extraContent' => [
-                'Email Settings',
-                'This can be set to an environment variable. Learn more',
-                'Transport Type'
-            ]],
-            ['url' => '/settings/plugins', 'title' => 'Plugins'],
-            ['url' => '/settings/sites', 'title' => 'Sites', 'extraContent' => [
-                'Craft CMS Test Site'
-            ]],
-            ['url' => '/settings/routes', 'title' => 'Routes', 'extraContent' => [
-                '_includes/route-handler'
-            ]],
-            ['url' => '/settings/routes', 'title' => 'Routes', 'extraContent' => [
-                '_includes/route-handler'
-            ]],
-            ['url' => '/settings/fields', 'title' => 'Fields', 'extraContent' => [
-                'Test field group 1',
-                'Example text field 1'
-            ]],
-            ['url' => '/settings/assets', 'title' => 'Asset Settings', 'extraContent' => [
-                'Test volume 1',
-                'Volumes',
-                'Image Transforms'
-            ]],
-            ['url' => '/settings/assets/transforms', 'title' => 'Asset Settings', 'extraContent' => [
-                'Example transform 1'
-            ]],
+            [
+                'url' => '/settings/email', 'title' => 'Email Settings', 'extraContent' => [
+                ['rendered' => 'System Email Address'],
+                ['rendered' => 'This can be set to an environment variable. Learn more'],
+                ['rendered' => 'Sender Name'],
+                ['rendered' => 'HTML Email Template'],
+                ['rendered' => 'Transport Type']
+            ]
+            ],
+            [
+                'url' => '/settings/plugins', 'title' => 'Plugins'
+            ],
+            [
+                'url' => '/settings/sites', 'title' => 'Sites'
+            ],
+            [
+                'url' => '/settings/routes', 'title' => 'Routes', 'extraContent' => [
+                ['rendered' => 'No routes exist yet.']
+            ]
+            ],
+            [
+                'url' => '/settings/fields', 'title' => 'Fields', 'extraContent' => [
+                ['rendered' => 'New field']
+            ]
+            ],
+            [
+                'url' => '/settings/fields/1', 'title' => 'Fields', 'extraContent' => [
+                ['rendered' => 'New field']
+            ]
+            ],
+
+            [
+                'url' => '/settings/assets', 'title' => 'Volumes - Asset Settings', 'extraContent' => [
+                ['rendered' => 'New volume'],
+                ['rendered' => 'Image Transforms'],
+                ['rendered' => 'Settings']
+            ]
+            ],
+            [
+                'url' => '/settings/assets/transforms', 'title' => 'Image Transforms - Asset Settings', 'extraContent' => [
+                ['rendered' => 'New image transform']
+            ]
+            ],
+            [
+                'url' => '/settings/assets/settings', 'title' => 'Settings - Asset Settings', 'extraContent' => [
+                ['rendered' => 'Temp Uploads Location'],
+                ['rendered' => 'Where do you want to store temporary asset uploads?']
+            ]
+            ],
 
             // Utility pages
-            ['url' => '/utilities', 'title' => 'System Report', 'extraContent' => [
-                'Application Info',
-                'Yii version',
-                'Plugins',
-                'Requirements'
-            ]],
-            ['url' => '/utilities/updates', 'title' => 'Updates', 'extraContent' => [
-                'Craft CMS',
-                'Update'
-            ]],
-            ['url' => '/utilities/system-messages', 'title' => 'System Messages', 'extraContent' => [
-                'When someone creates an account'
-            ]],
-            ['url' => '/utilities/asset-indexes', 'title' => 'Asset Indexes', 'extraContent' => [
-                'Test volume 1'
-            ]],
-            ['url' => '/utilities/deprecation-errors', 'title' => 'Deprecation Warnings', 'extraContent' => [
-                'No deprecation errors to report!'
-            ]],
-            ['url' => '/utilities/find-replace', 'title' => 'Find and Replace', 'extraContent' => [
-                'Find Text',
-                'Replace Text'
-            ]],
-            ['url' => '/utilities/migrations', 'title' => 'Migrations', 'extraContent' => [
-                'No content migrations.'
-            ]],
-            ['url' => '/utilities/clear-caches', 'title' => 'Clear Caches', 'extraContent' => [
-                'Asset caches'
-            ]],
-            ['url' => '/utilities/db-backup', 'title' => 'Database Backup', 'extraContent' => [
-                'Download backup?'
-            ]],
+            [
+                'url' => '/utilities', 'title' => 'System Report', 'extraContent' => [
+                ['rendered' => 'Application Info'],
+                ['rendered' => 'Yii version'],
+                ['rendered' => 'Plugins'],
+                ['rendered' => 'Requirements']
+            ]
+            ],
+            [
+                'url' => '/utilities/updates', 'title' => 'Updates'
+            ],
+            [
+                'url' => '/utilities/project-config', 'title' => 'Project Config', 'extraContent' => [
+                ['rendered' => 'Apply YAML Changes'],
+                ['rendered' => 'Rebuild the Config'],
+                ['rendered' => 'Loaded Project Config Data']
+            ]
+            ],
+            [
+                'url' => '/utilities/php-info', 'title' => 'PHP Info'
+            ],
+            [
+                'url' => '/utilities/system-messages', 'title' => 'System Messages', 'extraContent' => [
+                ['rendered' => 'When someone creates an account:'],
+                ['rendered' => 'When someone changes their email address:'],
+                ['rendered' => 'When someone forgets their password:'],
+                ['rendered' => 'When you are testing your email settings:'],
+            ]
+            ],
+            [
+                'url' => '/utilities/queue-manager', 'title' => 'Queue Manager', 'extraContent' => [
+                ['rendered' => 'No pending jobs.']
+            ]
+            ],
+            [
+                'url' => '/utilities/deprecation-errors', 'title' => 'Deprecation Warnings', 'extraContent' => [
+                ['rendered' => 'No deprecation errors to report!']
+            ]
+            ],
+            [
+                'url' => '/utilities/find-replace', 'title' => 'Find and Replace', 'extraContent' => [
+                ['rendered' => 'Find Text'],
+                ['rendered' => 'Replace Text']
+            ]
+            ],
+            [
+                'url' => '/utilities/migrations', 'title' => 'Migrations', 'extraContent' => [
+                ['rendered' => 'No content migrations.']
+            ]
+            ],
+            [
+                'url' => '/utilities/clear-caches', 'title' => 'Caches', 'extraContent' => [
+                ['rendered' => 'Clear Caches'],
+                ['rendered' => 'Invalidate Data Caches']
+            ]
+            ],
+            [
+                'url' => '/utilities/db-backup', 'title' => 'Database Backup', 'extraContent' => [
+                ['rendered' => 'Download backup']
+            ]
+            ],
         ];
     }
 }

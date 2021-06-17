@@ -21,9 +21,6 @@ use yii\base\NotSupportedException;
  */
 class UsernameValidatorTest extends Unit
 {
-    // Public Properties
-    // =========================================================================
-
     /**
      * @var UsernameValidator
      */
@@ -34,27 +31,17 @@ class UsernameValidatorTest extends Unit
      */
     protected $tester;
 
-    // Public Methods
-    // =========================================================================
-
-    // Tests
-    // =========================================================================
-
     /**
      * @dataProvider validateValueDataProvider
      *
-     * @param $result
-     * @param $input
+     * @param array|null $expected
+     * @param string|null $value
      * @throws NotSupportedException
      */
-    public function testValidateValue($result, $input)
+    public function testValidateValue(?array $expected, ?string $value)
     {
-        $validated = $this->usernameValidator->validateValue($input);
-        $this->assertSame($result, $validated);
+        self::assertSame($expected, $this->usernameValidator->validateValue($value));
     }
-
-    // Data Providers
-    // =========================================================================
 
     public function validateValueDataProvider(): array
     {
@@ -66,9 +53,6 @@ class UsernameValidatorTest extends Unit
             [['{attribute} cannot contain spaces.', []], 'dsasadsdasasad    adsdasdassdasad'],
         ];
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc

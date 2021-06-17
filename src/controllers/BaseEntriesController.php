@@ -12,6 +12,7 @@ use craft\behaviors\DraftBehavior;
 use craft\behaviors\RevisionBehavior;
 use craft\elements\Entry;
 use craft\models\Section;
+use craft\models\Site;
 use craft\web\Controller;
 use yii\web\ForbiddenHttpException;
 
@@ -25,9 +26,6 @@ use yii\web\ForbiddenHttpException;
  */
 abstract class BaseEntriesController extends Controller
 {
-    // Protected Methods
-    // =========================================================================
-
     /**
      * Returns the editable site IDs for a section.
      *
@@ -52,19 +50,29 @@ abstract class BaseEntriesController extends Controller
     }
 
     /**
+     * Enforces edit site permissions.
+     *
+     * @param Site $site
+     * @throws ForbiddenHttpException
+     * @since 3.5.0
+     */
+    protected function enforceSitePermission(Site $site)
+    {
+        if (Craft::$app->getIsMultiSite()) {
+            $this->requirePermission('editSite:' . $site->uid);
+        }
+    }
+
+    /**
      * Enforces all Edit Entry permissions.
      *
      * @param Entry $entry
      * @param bool $duplicate
+     * @throws ForbiddenHttpException
      */
     protected function enforceEditEntryPermissions(Entry $entry, bool $duplicate = false)
     {
         $permissionSuffix = ':' . $entry->getSection()->uid;
-
-        if (Craft::$app->getIsMultiSite()) {
-            // Make sure they have access to this site
-            $this->requirePermission('editSite:' . $entry->getSite()->uid);
-        }
 
         // Make sure the user is allowed to edit entries in this section
         $this->requirePermission('editEntries' . $permissionSuffix);
@@ -80,7 +88,7 @@ abstract class BaseEntriesController extends Controller
 
         if ($entry->getIsDraft()) {
             // If it's another user's draft, make sure they have permission to edit those
-            /** @var Entry|DraftBehavior $entry */
+            /* @var Entry|DraftBehavior $entry */
             if ($entry->creatorId != $userId) {
                 $this->requirePermission('editPeerEntryDrafts' . $permissionSuffix);
             }
@@ -97,6 +105,28 @@ abstract class BaseEntriesController extends Controller
     }
 
     /**
+     * Enforces entry deletion permissions.
+     *
+     * @param Entry $entry
+     * @throws ForbiddenHttpException
+     * @since 3.6.0
+     */
+    protected function enforceDeleteEntryPermissions(Entry $entry)
+    {
+        $currentUser = Craft::$app->getUser()->getIdentity();
+        $section = $entry->getSection();
+
+        if ($entry->getIsDraft()) {
+            /* @var Entry|DraftBehavior $entry */
+            if (!$entry->creatorId || $entry->creatorId != $currentUser->id) {
+                $this->requirePermission("deletePeerEntryDrafts:$section->uid");
+            }
+        } else if (!$entry->getIsDeletable()) {
+            throw new ForbiddenHttpException('User is not permitted to perform this action');
+        }
+    }
+
+    /**
      * Returns the document title that should be used on an Edit Entry page.
      *
      * @param Entry
@@ -107,10 +137,10 @@ abstract class BaseEntriesController extends Controller
         $docTitle = $this->pageTitle($entry);
 
         if ($entry->getIsDraft()) {
-            /** @var Entry|DraftBehavior $entry */
+            /* @var Entry|DraftBehavior $entry */
             $docTitle .= ' (' . $entry->draftName . ')';
         } else if ($entry->getIsRevision()) {
-            /** @var Entry|RevisionBehavior $entry */
+            /* @var Entry|RevisionBehavior $entry */
             $docTitle .= ' (' . $entry->getRevisionLabel() . ')';
         }
 
@@ -125,9 +155,33 @@ abstract class BaseEntriesController extends Controller
      */
     protected function pageTitle(Entry $entry): string
     {
-        if ($entry->getIsUnsavedDraft()) {
+        if ($title = trim($entry->title)) {
+            return $title;
+        }
+
+        if ($entry->getIsUnpublishedDraft()) {
             return Craft::t('app', 'Create a new entry');
         }
-        return trim($entry->title) ?: Craft::t('app', 'Edit Entry');
+        return Craft::t('app', 'Edit Entry');
+    }
+
+    /**
+     * Returns the posted `enabledForSite` value, taking the user’s permissions into account.
+     *
+     * @return bool|bool[]|null
+     * @throws ForbiddenHttpException
+     * @since 3.4.0
+     */
+    protected function enabledForSiteValue()
+    {
+        $enabledForSite = $this->request->getBodyParam('enabledForSite');
+        if (is_array($enabledForSite)) {
+            // Make sure they are allowed to edit all of the posted site IDs
+            $editableSiteIds = Craft::$app->getSites()->getEditableSiteIds();
+            if (array_diff(array_keys($enabledForSite), $editableSiteIds)) {
+                throw new ForbiddenHttpException('User not permitted to edit the statuses for all the submitted site IDs');
+            }
+        }
+        return $enabledForSite;
     }
 }

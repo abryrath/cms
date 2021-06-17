@@ -10,6 +10,7 @@ namespace craft\controllers;
 use Craft;
 use craft\helpers\App;
 use craft\helpers\Json;
+use craft\helpers\Session;
 use craft\helpers\UrlHelper;
 use craft\web\assets\pluginstore\PluginStoreAsset;
 use craft\web\assets\pluginstoreoauth\PluginStoreOauthAsset;
@@ -29,18 +30,15 @@ use yii\web\Response;
  */
 class PluginStoreController extends Controller
 {
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
-    public function init()
+    public function beforeAction($action)
     {
         // All plugin store actions require an admin
-        $this->requireAdmin();
+        $this->requireAdmin(false);
 
-        parent::init();
+        return parent::beforeAction($action);
     }
 
     /**
@@ -59,9 +57,6 @@ class PluginStoreController extends Controller
             'edition' => strtolower(Craft::$app->getEditionName()),
         ];
 
-        $generalConfig = Craft::$app->getConfig()->getGeneral();
-        $allowUpdates = $generalConfig->allowUpdates && $generalConfig->allowAdminChanges;
-
         $craftIdAccessToken = $this->getCraftIdAccessToken();
 
         $view = $this->getView();
@@ -69,7 +64,6 @@ class PluginStoreController extends Controller
         $view->registerJs('window.craftApiEndpoint = "' . Craft::$app->getPluginStore()->craftApiEndpoint . '";', View::POS_BEGIN);
         $view->registerJs('window.pluginStoreAppBaseUrl = "' . $pluginStoreAppBaseUrl . '";', View::POS_BEGIN);
         $view->registerJs('window.cmsInfo = ' . Json::encode($cmsInfo) . ';', View::POS_BEGIN);
-        $view->registerJs('window.allowUpdates = ' . Json::encode($allowUpdates) . ';', View::POS_BEGIN);
         $view->registerJs('window.cmsLicenseKey = ' . Json::encode(App::licenseKey()) . ';', View::POS_BEGIN);
         $view->registerJs('window.craftIdAccessToken = ' . Json::encode($craftIdAccessToken) . ';', View::POS_BEGIN);
 
@@ -97,11 +91,11 @@ class PluginStoreController extends Controller
         ]);
 
         if (!$redirectUrl) {
-            $redirect = Craft::$app->getRequest()->getPathInfo();
+            $redirect = $this->request->getPathInfo();
             $redirectUrl = UrlHelper::url($redirect);
         }
 
-        Craft::$app->getSession()->set('pluginStoreConnectRedirectUrl', $redirectUrl);
+        Session::set('pluginStoreConnectRedirectUrl', $redirectUrl);
 
         $authorizationUrl = $provider->getAuthorizationUrl([
             'scope' => [
@@ -110,7 +104,7 @@ class PluginStoreController extends Controller
                 'transferPluginLicense',
                 'deassociatePluginLicense',
             ],
-            'response_type' => 'token'
+            'response_type' => 'token',
         ]);
 
         return $this->redirect($authorizationUrl);
@@ -133,10 +127,10 @@ class PluginStoreController extends Controller
             $url = Craft::$app->getPluginStore()->craftIdEndpoint . '/oauth/revoke';
             $options = ['query' => ['accessToken' => $token->accessToken]];
             $client->request('GET', $url, $options);
-            Craft::$app->getSession()->setNotice(Craft::t('app', 'Disconnected from id.craftcms.com.'));
+            $this->setSuccessFlash(Craft::t('app', 'Disconnected from id.craftcms.com.'));
         } catch (\Exception $e) {
             Craft::error('Couldn’t revoke token: ' . $e->getMessage());
-            Craft::$app->getSession()->setError(Craft::t('app', 'Disconnected from id.craftcms.com with errors, check the logs.'));
+            $this->setFailFlash(Craft::t('app', 'Disconnected from id.craftcms.com with errors, check the logs.'));
         }
 
         Craft::$app->getPluginStore()->deleteToken();
@@ -157,12 +151,12 @@ class PluginStoreController extends Controller
 
         $view->registerAssetBundle(PluginStoreOauthAsset::class);
 
-        $redirectUrl = Craft::$app->getSession()->get('pluginStoreConnectRedirectUrl');
+        $redirectUrl = Session::get('pluginStoreConnectRedirectUrl');
 
         $options = [
             'redirectUrl' => $redirectUrl,
-            'error' => Craft::$app->getRequest()->getParam('error'),
-            'message' => Craft::$app->getRequest()->getParam('message')
+            'error' => $this->request->getParam('error'),
+            'message' => $this->request->getParam('message'),
         ];
 
         $this->getView()->registerJs('new Craft.PluginStoreOauthCallback(' . Json::encode($options) . ');');
@@ -180,7 +174,7 @@ class PluginStoreController extends Controller
         $craftIdAccessToken = $this->getCraftIdAccessToken();
 
         return $this->renderTemplate('plugin-store/_special/oauth/modal-callback', [
-            'craftIdAccessToken' => $craftIdAccessToken
+            'craftIdAccessToken' => $craftIdAccessToken,
         ]);
     }
 
@@ -196,9 +190,9 @@ class PluginStoreController extends Controller
         $this->requirePostRequest();
 
         try {
-            $token_type = Craft::$app->getRequest()->getParam('token_type');
-            $access_token = Craft::$app->getRequest()->getParam('access_token');
-            $expires_in = Craft::$app->getRequest()->getParam('expires_in');
+            $token_type = $this->request->getParam('token_type');
+            $access_token = $this->request->getParam('access_token');
+            $expires_in = $this->request->getParam('expires_in');
 
             $token = [
                 'access_token' => $access_token,
@@ -208,11 +202,11 @@ class PluginStoreController extends Controller
 
             Craft::$app->getPluginStore()->saveToken($token);
 
-            Craft::$app->getSession()->setNotice(Craft::t('app', 'Connected to craftcms.com.'));
+            $this->setSuccessFlash(Craft::t('app', 'Connected to craftcms.com.'));
 
             return $this->asJson([
                 'success' => true,
-                'redirect' => UrlHelper::cpUrl('plugin-store/account')
+                'redirect' => UrlHelper::cpUrl('plugin-store/account'),
             ]);
         } catch (\Exception $e) {
             return $this->asErrorJson($e->getMessage());
@@ -246,6 +240,7 @@ class PluginStoreController extends Controller
         $data['craftLogo'] = Craft::$app->getAssetManager()->getPublishedUrl('@app/web/assets/pluginstore/dist/', true, 'images/craft.svg');
         $data['poweredByStripe'] = Craft::$app->getAssetManager()->getPublishedUrl('@app/web/assets/pluginstore/dist/', true, 'images/powered_by_stripe.svg');
         $data['defaultPluginSvg'] = Craft::$app->getAssetManager()->getPublishedUrl('@app/web/assets/pluginstore/dist/', true, 'images/default-plugin.svg');
+        $data['alertIcon'] = Craft::$app->getAssetManager()->getPublishedUrl('@app/web/assets/pluginstore/dist/', true, 'images/alert.svg');
 
         return $this->asJson($data);
     }
@@ -259,7 +254,7 @@ class PluginStoreController extends Controller
      */
     public function actionSavePluginLicenseKeys()
     {
-        $payload = Json::decode(Craft::$app->getRequest()->getRawBody(), true);
+        $payload = Json::decode($this->request->getRawBody(), true);
         $pluginLicenseKeys = (isset($payload['pluginLicenseKeys']) ? $payload['pluginLicenseKeys'] : []);
         $plugins = Craft::$app->getPlugins()->getAllPlugins();
 
@@ -271,9 +266,6 @@ class PluginStoreController extends Controller
 
         return $this->asJson(['success' => true]);
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Returns the Plugin Store’s Vue App Base URL for Vue Router.

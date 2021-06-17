@@ -7,9 +7,9 @@
 
 namespace craft\gql\interfaces\elements;
 
-use craft\elements\GlobalSet as GlobalSetElement;
 use craft\gql\GqlEntityRegistry;
 use craft\gql\interfaces\Element;
+use craft\gql\TypeManager;
 use craft\gql\types\generators\GlobalSetType;
 use GraphQL\Type\Definition\InterfaceType;
 use GraphQL\Type\Definition\Type;
@@ -43,9 +43,7 @@ class GlobalSet extends Element
             'name' => static::getName(),
             'fields' => self::class . '::getFieldDefinitions',
             'description' => 'This is the interface implemented by all global sets.',
-            'resolveType' => function(GlobalSetElement $value) {
-                return $value->getGqlTypeName();
-            }
+            'resolveType' => self::class . '::resolveElementTypeName',
         ]));
 
         GlobalSetType::generateTypes();
@@ -66,17 +64,17 @@ class GlobalSet extends Element
      */
     public static function getFieldDefinitions(): array
     {
-        return array_merge(parent::getFieldDefinitions(), [
+        return TypeManager::prepareFieldDefinitions(array_merge(parent::getFieldDefinitions(), [
             'name' => [
                 'name' => 'name',
                 'type' => Type::string(),
-                'description' => 'The name of the global set.'
+                'description' => 'The name of the global set.',
             ],
             'handle' => [
                 'name' => 'handle',
                 'type' => Type::string(),
-                'description' => 'The handle of the global set.'
+                'description' => 'The handle of the global set.',
             ],
-        ]);
+        ]), self::getName());
     }
 }

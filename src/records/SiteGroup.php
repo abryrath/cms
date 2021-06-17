@@ -23,13 +23,7 @@ use yii\db\ActiveQueryInterface;
  */
 class SiteGroup extends ActiveRecord
 {
-    // Traits
-    // =========================================================================
-
     use SoftDeleteTrait;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -47,6 +41,6 @@ class SiteGroup extends ActiveRecord
      */
     public function getSites(): ActiveQueryInterface
     {
-        return $this->hasMany(Site::class, ['siteId' => 'id']);
+        return $this->hasMany(Site::class, ['groupId' => 'id']);
     }
 }

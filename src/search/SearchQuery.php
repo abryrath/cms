@@ -17,9 +17,6 @@ use craft\helpers\StringHelper;
  */
 class SearchQuery
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var string
      */
@@ -34,9 +31,6 @@ class SearchQuery
      * @var SearchQueryTerm[]|SearchQueryTermGroup
      */
     private $_tokens;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * Constructor
@@ -71,9 +65,6 @@ class SearchQuery
     {
         return $this->_query;
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Parses the query into an array of tokens.
@@ -116,7 +107,7 @@ class SearchQuery
 
             // Is this an attribute-specific term?
             if (preg_match('/^(\w+)(::?)(.+)$/', $token, $match)) {
-                list(, $term->attribute, $colons, $token) = $match;
+                [, $term->attribute, $colons, $token] = $match;
                 if ($colons === '::') {
                     $term->exact = true;
                     $term->subLeft = false;
@@ -156,7 +147,7 @@ class SearchQuery
             $term->term = $token;
 
             if ($appendToPrevious) {
-                /** @noinspection PhpUndefinedVariableInspection */
+                /* @noinspection PhpUndefinedVariableInspection */
                 $previousToken->terms[] = $term;
             } else {
                 $this->_tokens[] = $term;

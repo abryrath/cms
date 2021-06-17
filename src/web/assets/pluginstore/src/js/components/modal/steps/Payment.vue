@@ -132,7 +132,7 @@
                 couponCodeLoading: false,
                 couponCodeSuccess: false,
                 couponCodeTimeout: false,
-                error: false,
+                error: null,
                 errors: {},
                 guestCardToken: null,
                 loading: false,
@@ -184,6 +184,7 @@
 
         methods: {
             checkout() {
+                this.error = null
                 this.errors = {}
                 this.loading = true
                 this.savePaymentMethod(
@@ -227,23 +228,24 @@
                                                                 this.$store.dispatch('cart/resetCart')
                                                                     .then(() => {
                                                                         this.loading = false
-                                                                        this.error = false
+                                                                        this.error = null
                                                                         this.$root.modalStep = 'thank-you'
                                                                     })
                                                             })
                                                     })
                                             })
                                     })
-                                    .catch(checkoutResponse => {
+                                    .catch(checkoutError => {
                                         this.loading = false
-                                        this.error = checkoutResponse.data.error || checkoutResponse.statusText;
+                                        this.error = (checkoutError.response.data && checkoutError.response.data.message) || checkoutError.response.statusText
+                                        this.$root.displayError("An error occurred.")
                                     })
                             },
 
                             // error
-                            (response) => {
-                                if (response.data.errors) {
-                                    response.data.errors.forEach(error => {
+                            (error) => {
+                                if (error.response && error.response.data.errors) {
+                                    error.response.data.errors.forEach(error => {
                                         this.errors[error.param] = [error.message]
                                     })
                                 }
@@ -253,9 +255,14 @@
                     },
 
                     // error
-                    () => {
+                    (errorMsg) => {
                         this.loading = false
-                        this.$root.displayError("Couldn’t save payment method.")
+
+                        if (!errorMsg) {
+                            errorMsg = this.$options.filters.t("There was a problem processing your credit card.", 'app')
+                        }
+
+                        this.$root.displayError(errorMsg)
                     })
             },
 
@@ -346,8 +353,8 @@
                                 this.$refs.newCard.save(response => {
                                     this.cardToken = response
                                     cb()
-                                }, () => {
-                                    cbError()
+                                }, (response) => {
+                                    this.handleSavePaymentError(response, cbError)
                                 })
                             } else {
                                 cb()
@@ -360,14 +367,30 @@
                         this.$refs.guestCard.save(response => {
                             this.guestCardToken = response
                             cb()
-                        }, () => {
-                            cbError()
+                        }, (response) => {
+                            this.handleSavePaymentError(response, cbError)
                         })
                     }
                 } else {
                     cb()
                 }
             },
+
+            handleSavePaymentError(response, cbError) {
+                if (!response || !response.error || !response.error.code) {
+                    cbError()
+                    return null
+                }
+
+                const translationKey = 'stripe_error_' + response.error.code
+                let errorMsg = this.$options.filters.t(translationKey, 'app')
+
+                if (errorMsg === translationKey) {
+                    errorMsg = response.error.message ? response.error.message : null
+                }
+
+                cbError(errorMsg)
+            }
         },
 
         mounted() {
@@ -393,7 +416,6 @@
 
 <style lang="scss">
     .payment {
-
         .field {
             margin-top: 0.75rem !important;
             margin-bottom: 0 !important;

@@ -50,11 +50,11 @@ class User extends ElementResolver
         }
 
         if (!GqlHelper::canSchema('usergroups.everyone')) {
-            $query->innerJoin(Table::USERGROUPS_USERS . ' usergroups_users',
+            $query->innerJoin(['usergroups_users' => Table::USERGROUPS_USERS],
                 [
                     'and',
                     '[[users.id]] = [[usergroups_users.userId]]',
-                    ['in', '[[usergroups_users.groupId]]', array_values(Db::idsByUids(Table::USERGROUPS, $pairs['usergroups']))]
+                    ['in', '[[usergroups_users.groupId]]', array_values(Db::idsByUids(Table::USERGROUPS, $pairs['usergroups']))],
                 ]
             );
 

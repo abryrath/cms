@@ -20,9 +20,6 @@ use Twig\TokenParser\AbstractTokenParser;
  */
 class CacheTokenParser extends AbstractTokenParser
 {
-    // Public Methods
-    // =========================================================================
-
     /**
      * @return string
      */
@@ -37,7 +34,7 @@ class CacheTokenParser extends AbstractTokenParser
     public function parse(Token $token)
     {
         $lineno = $token->getLine();
-        /** @var Parser $parser */
+        /* @var Parser $parser */
         $parser = $this->parser;
         $stream = $parser->getStream();
 
@@ -86,7 +83,7 @@ class CacheTokenParser extends AbstractTokenParser
                     'year',
                     'years',
                     'week',
-                    'weeks'
+                    'weeks',
                 ])->getValue();
         } else if ($stream->test(Token::NAME_TYPE, 'until')) {
             $stream->next();
@@ -104,7 +101,7 @@ class CacheTokenParser extends AbstractTokenParser
         $stream->expect(Token::BLOCK_END_TYPE);
         $nodes['body'] = $parser->subparse([
             $this,
-            'decideCacheEnd'
+            'decideCacheEnd',
         ], true);
         $stream->expect(Token::BLOCK_END_TYPE);
 

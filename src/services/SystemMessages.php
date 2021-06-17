@@ -26,24 +26,15 @@ use yii\db\Expression;
  */
 class SystemMessages extends Component
 {
-    // Constants
-    // =========================================================================
-
     /**
      * @event RegisterEmailMessagesEvent The event that is triggered when registering email messages.
      */
     const EVENT_REGISTER_MESSAGES = 'registerMessages';
 
-    // Properties
-    // =========================================================================
-
     /**
      * @var SystemMessage[]|null
      */
     private $_defaultMessages;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * Returns all of the default system email messages, without subject/body overrides.
@@ -54,6 +45,13 @@ class SystemMessages extends Component
     {
         if ($this->_defaultMessages !== null) {
             return $this->_defaultMessages;
+        }
+
+        // If the current language isn't one of the site's languages, switch to the primary site's language
+        $language = Craft::$app->language;
+        $i18n = Craft::$app->getI18n();
+        if (!in_array($language, $i18n->getSiteLocaleIds())) {
+            Craft::$app->language = $i18n->getPrimarySiteLocaleId();
         }
 
         $messages = [
@@ -85,7 +83,7 @@ class SystemMessages extends Component
 
         // Give plugins a chance to add additional messages
         $event = new RegisterEmailMessagesEvent([
-            'messages' => $messages
+            'messages' => $messages,
         ]);
         $this->trigger(self::EVENT_REGISTER_MESSAGES, $event);
 
@@ -98,6 +96,9 @@ class SystemMessages extends Component
                 $messages[$key] = new SystemMessage($message);
             }
         }
+
+        // Put the original language back
+        Craft::$app->language = $language;
 
         return $this->_defaultMessages = $messages;
     }
@@ -223,9 +224,6 @@ class SystemMessages extends Component
 
         return false;
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Returns a new Query prepped to return system email messages from the DB.

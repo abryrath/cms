@@ -12,10 +12,8 @@ use Codeception\Module\Yii2;
 use Codeception\PHPUnit\TestCase;
 use Codeception\Stub;
 use Codeception\TestInterface;
-use craft\base\Element;
-use craft\base\Field;
+use craft\base\ElementInterface;
 use craft\config\DbConfig;
-use craft\db\Connection;
 use craft\db\Query;
 use craft\db\Table;
 use craft\elements\db\ElementQuery;
@@ -39,7 +37,6 @@ use yii\base\Exception as YiiBaseException;
 use yii\base\InvalidArgumentException;
 use yii\base\InvalidConfigException;
 use yii\base\Module;
-use yii\db\Exception;
 
 /**
  * Craft module for codeception
@@ -64,16 +61,10 @@ use yii\db\Exception;
  */
 class Craft extends Yii2
 {
-    // Public Properties
-    // =========================================================================
-
     /**
-     * @var array A static version of the testing config.
-     *
-     * Will be set very early on in the testing processes so it can be used in configuration files such as `general.php` and `test.php`.
-     * This variable is equivalant to calling $this->_getConfig(); but is available for public access.
+     * @var self The current instance
      */
-    public static $testConfig;
+    public static $instance;
 
     /**
      * @var TestInterface
@@ -86,10 +77,10 @@ class Craft extends Yii2
     protected $addedConfig = [
         'migrations' => [],
         'plugins' => [],
-        'setupDb' => null,
+        'dbSetup' => null,
         'projectConfig' => null,
         'fullMock' => false,
-        'edition' => \Craft::Solo
+        'edition' => \Craft::Solo,
     ];
 
     /**
@@ -101,9 +92,6 @@ class Craft extends Yii2
      * @var array For expecting events code
      */
     protected $requiredEvents = [];
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * Craft constructor.
@@ -129,12 +117,34 @@ class Craft extends Yii2
     {
         parent::_initialize();
 
-        $config = $this->_getConfig();
-        Craft::$testConfig = $config;
+        // Create a Craft::$app object
+        TestSetup::warmCraft();
 
-        if ($config['fullMock'] !== true) {
+        self::$instance = $this;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function _beforeSuite($settings = []): void
+    {
+        parent::_beforeSuite($settings);
+
+        if ($this->_getConfig('fullMock') !== true) {
             $this->setupDb();
         }
+
+        TestSetup::removeProjectConfigFolders(CRAFT_CONFIG_PATH . DIRECTORY_SEPARATOR . 'project');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function _afterSuite()
+    {
+        parent::_afterSuite();
+
+        TestSetup::removeProjectConfigFolders(CRAFT_CONFIG_PATH . DIRECTORY_SEPARATOR . 'project');
     }
 
     /**
@@ -161,13 +171,9 @@ class Craft extends Yii2
             return;
         }
 
-        $this->resetProjectConfig();
-
-        $db = \Craft::createObject(
-            App::dbConfig(self::createDbConfig())
-        );
-
-        \Craft::$app->set('db', $db);
+        if ($this->_getConfig('dbSetup')['setupCraft']) {
+            $this->resetProjectConfig();
+        }
     }
 
     /**
@@ -193,7 +199,7 @@ class Craft extends Yii2
             TestSetup::setupProjectConfig();
 
             \Craft::$app->getProjectConfig()->applyConfigChanges(
-                TestSetup::getSeedProjectConfigData(false)
+                TestSetup::getSeedProjectConfigData()
             );
 
             \Craft::$app->getProjectConfig()->saveModifiedConfigData();
@@ -219,21 +225,10 @@ class Craft extends Yii2
     {
         ob_start();
         try {
-            // Create a Craft::$app object
-            TestSetup::warmCraft();
-
             // Prevent's a static properties bug.
             ProjectConfig::reset();
 
             App::maxPowerCaptain();
-
-            $dbConnection = \Craft::createObject(App::dbConfig(self::createDbConfig()));
-
-            if (!$dbConnection instanceof Connection) {
-                throw new Exception('Unable to establish a DB connection to setup the DB');
-            }
-
-            \Craft::$app->set('db', $dbConnection);
 
             $dbSetupConfig = $this->_getConfig('dbSetup');
 
@@ -244,12 +239,12 @@ class Craft extends Yii2
 
             // Get rid of everything.
             if (isset($dbSetupConfig['clean']) && $dbSetupConfig['clean'] === true) {
-                TestSetup::cleanseDb($dbConnection);
+                TestSetup::cleanseDb(\Craft::$app->getDb());
             }
 
             // Install the db from install.php
             if (isset($dbSetupConfig['setupCraft']) && $dbSetupConfig['setupCraft'] === true) {
-                TestSetup::setupCraftDb($dbConnection);
+                TestSetup::setupCraftDb(\Craft::$app->getDb());
             }
 
             // Ready to rock.
@@ -327,19 +322,13 @@ class Craft extends Yii2
     public static function createDbConfig(): DbConfig
     {
         return new DbConfig([
-            'password' => getenv('DB_PASSWORD'),
-            'user' => getenv('DB_USER'),
-            'database' => getenv('DB_DATABASE'),
-            'tablePrefix' => getenv('DB_TABLE_PREFIX'),
-            'driver' => getenv('DB_DRIVER'),
-            'port' => getenv('DB_PORT'),
-            'schema' => getenv('DB_SCHEMA'),
-            'server' => getenv('DB_SERVER'),
+            'dsn' => App::env('DB_DSN'),
+            'user' => App::env('DB_USER'),
+            'password' => App::env('DB_PASSWORD'),
+            'tablePrefix' => App::env('DB_TABLE_PREFIX'),
+            'schema' => App::env('DB_SCHEMA'),
         ]);
     }
-
-    // Helpers for test methods
-    // =========================================================================
 
     /**
      * Ensure that an event is triggered by the $callback() function.
@@ -356,7 +345,8 @@ class Craft extends Yii2
         $callback,
         string $eventInstance = '',
         array $eventValues = []
-    ) {
+    )
+    {
         // Add this event.
         $eventTriggered = false;
 
@@ -379,16 +369,38 @@ class Craft extends Yii2
     }
 
     /**
-     * @param Element $element
+     * @param ElementInterface $element
      * @param bool $failHard
      * @return bool
      * @throws ElementNotFoundException
      * @throws Throwable
      * @throws YiiBaseException
      */
-    public function saveElement(Element $element, bool $failHard = true): bool
+    public function saveElement(ElementInterface $element, bool $failHard = true): bool
     {
         if (!\Craft::$app->getElements()->saveElement($element)) {
+            if ($failHard) {
+                throw new InvalidArgumentException(
+                    implode(', ', $element->getErrorSummary(true))
+                );
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param ElementInterface $element
+     * @param bool $hardDelete
+     * @param bool $failHard
+     * @return bool
+     * @throws Throwable
+     */
+    public function deleteElement(ElementInterface $element, bool $hardDelete = true, bool $failHard = true): bool
+    {
+        if (!\Craft::$app->getElements()->deleteElement($element, $hardDelete)) {
             if ($failHard) {
                 throw new InvalidArgumentException(
                     implode(', ', $element->getErrorSummary(true))
@@ -405,7 +417,7 @@ class Craft extends Yii2
      * @param string $elementType
      * @param array $searchProperties
      * @param int $amount
-     * @param bool $searchAll - Wether anyStatus() and trashed(null) should be applied
+     * @param bool $searchAll - Whether anyStatus() and trashed(null) should be applied
      * @return array
      */
     public function assertElementsExist(string $elementType, array $searchProperties = [], int $amount = 1, bool $searchAll = false): array
@@ -471,26 +483,51 @@ class Craft extends Yii2
     /**
      * @param Module $module
      * @param string $component
-     * @param array $methods
-     * @param array $constructParams
+     * @param array $params
+     * @param array $constructorParams
      * @throws InvalidConfigException
      */
-    public function mockMethods(Module $module, string $component, array $methods = [], array $constructParams = [])
+    public function mockMethods(Module $module, string $component, array $params = [], array $constructorParams = [])
     {
         $componentInstance = $module->get($component);
 
-        $module->set($component, Stub::construct(get_class($componentInstance), [$constructParams], $methods));
+        $module->set($component, Stub::construct(get_class($componentInstance), $constructorParams, $params));
     }
 
     /**
      * @param string $component
-     * @param array $methods
-     * @param array $constructParams
+     * @param array $params
+     * @param array $constructorParams
      * @throws InvalidConfigException
      */
-    public function mockCraftMethods(string $component, array $methods = [], array $constructParams = [])
+    public function mockCraftMethods(string $component, array $params = [], array $constructorParams = [])
     {
-        return $this->mockMethods(\Craft::$app, $component, $methods, $constructParams);
+        $this->mockMethods(\Craft::$app, $component, $params, $constructorParams);
+    }
+
+    /**
+     * @param array $params
+     * @return void
+     * @since 3.6.11
+     */
+    public function mockDbMethods(array $params = []): void
+    {
+        $db = \Craft::$app->getDb();
+        $this->mockCraftMethods('db', $params, [
+            [
+                'driverName' => $db->driverName,
+                'dsn' => $db->dsn,
+                'username' => $db->username,
+                'password' => $db->password,
+                'charset' => $db->charset,
+                'tablePrefix' => $db->tablePrefix,
+                'schemaMap' => $db->schemaMap,
+                'commandMap' => $db->commandMap,
+                'attributes' => $db->attributes,
+                'enableSchemaCache' => $db->enableSchemaCache,
+                'pdo' => $db->pdo,
+            ],
+        ]);
     }
 
     /**
@@ -539,7 +576,6 @@ class Craft extends Yii2
             return null;
         }
 
-        /** @var Field $field */
         $layoutId = (new Query())
             ->select(['layoutId'])
             ->from([Table::FIELDLAYOUTFIELDS])
@@ -567,9 +603,6 @@ class Craft extends Yii2
 
         return $items;
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @param $event
@@ -658,7 +691,7 @@ class Craft extends Yii2
             'SCRIPT_NAME' => $entryScript,
             'SERVER_NAME' => parse_url($entryUrl, PHP_URL_HOST),
             'SERVER_PORT' => parse_url($entryUrl, PHP_URL_PORT) ?: '80',
-            'HTTPS' => parse_url($entryUrl, PHP_URL_SCHEME) === 'https'
+            'HTTPS' => parse_url($entryUrl, PHP_URL_SCHEME) === 'https',
         ]);
 
         $this->configureClient($this->_getConfig());

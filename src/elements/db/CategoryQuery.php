@@ -12,6 +12,7 @@ use craft\db\Query;
 use craft\db\QueryAbortedException;
 use craft\db\Table;
 use craft\elements\Category;
+use craft\helpers\ArrayHelper;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
 use craft\models\CategoryGroup;
@@ -26,9 +27,9 @@ use yii\db\Connection;
  * @method Category|array|null nth(int $n, Connection $db = null)
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @since 3.0.0
+ * @doc-path categories.md
  * @supports-structure-params
  * @supports-site-params
- * @supports-enabledforsite-param
  * @supports-title-param
  * @supports-slug-param
  * @supports-uri-param
@@ -41,9 +42,6 @@ use yii\db\Connection;
  */
 class CategoryQuery extends ElementQuery
 {
-    // Properties
-    // =========================================================================
-
     // General parameters
     // -------------------------------------------------------------------------
 
@@ -59,9 +57,6 @@ class CategoryQuery extends ElementQuery
      * @used-by groupId()
      */
     public $groupId;
-
-    // Public Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -137,7 +132,7 @@ class CategoryQuery extends ElementQuery
     {
         if ($value instanceof CategoryGroup) {
             $this->structureId = ($value->structureId ?: false);
-            $this->groupId = $value->id;
+            $this->groupId = [$value->id];
         } else if ($value !== null) {
             $this->groupId = (new Query())
                 ->select(['id'])
@@ -189,14 +184,13 @@ class CategoryQuery extends ElementQuery
         return $this;
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
     protected function beforePrepare(): bool
     {
+        $this->_normalizeGroupId();
+
         // See if 'group' was set to an invalid handle
         if ($this->groupId === []) {
             return false;
@@ -215,9 +209,6 @@ class CategoryQuery extends ElementQuery
         return parent::beforePrepare();
     }
 
-    // Private Methods
-    // =========================================================================
-
     /**
      * Applies the 'editable' param to the query being prepared.
      *
@@ -228,7 +219,7 @@ class CategoryQuery extends ElementQuery
         if ($this->editable) {
             // Limit the query to only the category groups the user has permission to edit
             $this->subQuery->andWhere([
-                'categories.groupId' => Craft::$app->getCategories()->getEditableGroupIds()
+                'categories.groupId' => Craft::$app->getCategories()->getEditableGroupIds(),
             ]);
         }
     }
@@ -239,8 +230,10 @@ class CategoryQuery extends ElementQuery
     private function _applyGroupIdParam()
     {
         if ($this->groupId) {
+            $this->subQuery->andWhere(['categories.groupId' => $this->groupId]);
+
             // Should we set the structureId param?
-            if ($this->structureId === null && (!is_array($this->groupId) || count($this->groupId) === 1)) {
+            if ($this->structureId === null && count($this->groupId) === 1) {
                 $structureId = (new Query())
                     ->select(['structureId'])
                     ->from([Table::CATEGORYGROUPS])
@@ -248,8 +241,24 @@ class CategoryQuery extends ElementQuery
                     ->scalar();
                 $this->structureId = (int)$structureId ?: false;
             }
+        }
+    }
 
-            $this->subQuery->andWhere(Db::parseParam('categories.groupId', $this->groupId));
+    /**
+     * Normalizes the groupId param to an array of IDs or null
+     */
+    private function _normalizeGroupId()
+    {
+        if (empty($this->groupId)) {
+            $this->groupId = is_array($this->groupId) ? [] : null;
+        } else if (is_numeric($this->groupId)) {
+            $this->groupId = [$this->groupId];
+        } else if (!is_array($this->groupId) || !ArrayHelper::isNumeric($this->groupId)) {
+            $this->groupId = (new Query())
+                ->select(['id'])
+                ->from([Table::CATEGORYGROUPS])
+                ->where(Db::parseParam('id', $this->groupId))
+                ->column();
         }
     }
 
@@ -280,7 +289,7 @@ class CategoryQuery extends ElementQuery
                     $condition[] = [
                         'and',
                         Db::parseParam('categorygroups.handle', $parts[0]),
-                        Db::parseParam('elements_sites.slug', $parts[1])
+                        Db::parseParam('elements_sites.slug', $parts[1]),
                     ];
                     $joinCategoryGroups = true;
                 }
@@ -290,7 +299,22 @@ class CategoryQuery extends ElementQuery
         $this->subQuery->andWhere($condition);
 
         if ($joinCategoryGroups) {
-            $this->subQuery->innerJoin('{{%categorygroups}} categorygroups', '[[categorygroups.id]] = [[categories.groupId]]');
+            $this->subQuery->innerJoin(['categorygroups' => Table::CATEGORYGROUPS], '[[categorygroups.id]] = [[categories.groupId]]');
         }
+    }
+
+    /**
+     * @inheritdoc
+     * @since 3.5.0
+     */
+    protected function cacheTags(): array
+    {
+        $tags = [];
+        if ($this->groupId) {
+            foreach ($this->groupId as $groupId) {
+                $tags[] = "group:$groupId";
+            }
+        }
+        return $tags;
     }
 }

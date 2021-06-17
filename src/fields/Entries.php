@@ -16,6 +16,9 @@ use craft\gql\interfaces\elements\Entry as EntryInterface;
 use craft\gql\resolvers\elements\Entry as EntryResolver;
 use craft\helpers\Db;
 use craft\helpers\Gql;
+use craft\helpers\Gql as GqlHelper;
+use craft\models\GqlSchema;
+use craft\services\Gql as GqlService;
 use GraphQL\Type\Definition\Type;
 
 /**
@@ -26,9 +29,6 @@ use GraphQL\Type\Definition\Type;
  */
 class Entries extends BaseRelationField
 {
-    // Static
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
@@ -61,8 +61,13 @@ class Entries extends BaseRelationField
         return EntryQuery::class;
     }
 
-    // Public Methods
-    // =========================================================================
+    /**
+     * @inheritdoc
+     */
+    public function includeInGqlSchema(GqlSchema $schema): bool
+    {
+        return Gql::canQueryEntries($schema);
+    }
 
     /**
      * @inheritdoc
@@ -75,6 +80,7 @@ class Entries extends BaseRelationField
             'type' => Type::listOf(EntryInterface::getType()),
             'args' => EntryArguments::getArguments(),
             'resolve' => EntryResolver::class . '::resolve',
+            'complexity' => GqlHelper::relatedArgumentComplexity(GqlService::GRAPHQL_COMPLEXITY_EAGER_LOAD),
         ];
     }
 
@@ -97,7 +103,7 @@ class Entries extends BaseRelationField
 
         return [
             'typeId' => array_values($entryTypeIds),
-            'sectionId' => array_values($sectionIds)
+            'sectionId' => array_values($sectionIds),
         ];
     }
 }

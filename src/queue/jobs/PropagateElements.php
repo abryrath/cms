@@ -23,9 +23,6 @@ use craft\services\Elements;
  */
 class PropagateElements extends BaseJob
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @var string|ElementInterface The element type that should be propagated
      */
@@ -43,25 +40,19 @@ class PropagateElements extends BaseJob
      */
     public $siteId;
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
     public function execute($queue)
     {
-        // Let's save ourselves some trouble and just clear all the caches for this element class
-        Craft::$app->getTemplateCaches()->deleteCachesByElementType($this->elementType);
-
-        /** @var ElementQuery $query */
+        /* @var ElementQuery $query */
         $query = $this->_query();
         $total = $query->count();
         $elementsService = Craft::$app->getElements();
 
         $callback = function(BatchElementActionEvent $e) use ($queue, $query, $total) {
             if ($e->query === $query) {
-                $this->setProgress($queue, ($e->position - 1) / $total, Craft::t('app', '{step} of {total}', [
+                $this->setProgress($queue, ($e->position - 1) / $total, Craft::t('app', '{step, number} of {total, number}', [
                     'step' => $e->position,
                     'total' => $total,
                 ]));
@@ -73,26 +64,20 @@ class PropagateElements extends BaseJob
         $elementsService->off(Elements::EVENT_BEFORE_PROPAGATE_ELEMENT, $callback);
     }
 
-    // Protected Methods
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
     protected function defaultDescription(): string
     {
-        /** @var ElementQuery $query */
+        /* @var ElementQuery $query */
         $query = $this->_query();
-        /** @var ElementInterface $elementType */
+        /* @var ElementInterface $elementType */
         $elementType = $query->elementType;
         $total = $query->count();
         return Craft::t('app', 'Propagating {type}', [
             'type' => $total == 1 ? $elementType::lowerDisplayName() : $elementType::pluralLowerDisplayName(),
         ]);
     }
-
-    // Private Methods
-    // =========================================================================
 
     /**
      * Returns the element query based on the criteria.

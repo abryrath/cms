@@ -14,16 +14,17 @@ use craft\test\fixtures\elements\GlobalSetFixture as BaseGlobalSetFixture;
  *
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @author Global Network Group | Giel Tettelaar <giel@yellowflash.net>
- * @since 3.1
+ * @since 3.2.0
  */
 class GlobalSetFixture extends BaseGlobalSetFixture
 {
-    // Properties
-    // =========================================================================
-
     /**
      * @inheritdoc
      */
     public $dataFile = __DIR__ . '/data/global-sets.php';
 
+    /**
+     * @inheritdoc
+     */
+    public $depends = [FieldLayoutFixture::class];
 }

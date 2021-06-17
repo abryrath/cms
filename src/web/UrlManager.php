@@ -24,12 +24,9 @@ use yii\web\UrlRule as YiiUrlRule;
  */
 class UrlManager extends \yii\web\UrlManager
 {
-    // Constants
-    // =========================================================================
-
     /**
      * @event RegisterUrlRulesEvent The event that is triggered when registering
-     * URL rules for the Control Panel.
+     * URL rules for the control panel.
      *
      * ::: warning
      * This event gets called during class initialization, so you should always
@@ -69,9 +66,6 @@ class UrlManager extends \yii\web\UrlManager
      */
     const EVENT_REGISTER_SITE_URL_RULES = 'registerSiteUrlRules';
 
-    // Properties
-    // =========================================================================
-
     /**
      * @var bool Whether [[parseRequest()]] should check for a token on the request and route the request based on that.
      * @since 3.2.0
@@ -93,9 +87,6 @@ class UrlManager extends \yii\web\UrlManager
      */
     private $_matchedElementRoute;
 
-    // Public Methods
-    // =========================================================================
-
     /**
      * Constructor.
      *
@@ -114,7 +105,7 @@ class UrlManager extends \yii\web\UrlManager
      */
     public function parseRequest($request)
     {
-        /** @var Request $request */
+        /* @var Request $request */
         // Just in case...
         if ($request->getIsConsoleRequest()) {
             return false;
@@ -151,7 +142,7 @@ class UrlManager extends \yii\web\UrlManager
         $route = trim($params[0], '/');
         unset($params[0]);
 
-        return UrlHelper::actionUrl($route, $params);
+        return UrlHelper::actionUrl($route, $params, null, false);
     }
 
     /**
@@ -232,7 +223,13 @@ class UrlManager extends \yii\web\UrlManager
             return $this->_matchedElement;
         }
 
-        $this->_getMatchedElementRoute(Craft::$app->getRequest());
+        $request = Craft::$app->getRequest();
+
+        if ($request->getIsConsoleRequest()) {
+            return false;
+        }
+
+        $this->_getMatchedElementRoute($request);
         return $this->_matchedElement;
     }
 
@@ -261,9 +258,6 @@ class UrlManager extends \yii\web\UrlManager
         $this->_matchedElement = $element;
         $this->_matchedElementRoute = $element;
     }
-
-    // Protected Methods
-    // =========================================================================
 
     /**
      * @inheritdoc
@@ -300,9 +294,6 @@ class UrlManager extends \yii\web\UrlManager
         return parent::buildRules($rules);
     }
 
-    // Private Methods
-    // =========================================================================
-
     /**
      * Returns the rules that should be used for the current request.
      *
@@ -319,7 +310,7 @@ class UrlManager extends \yii\web\UrlManager
         // Load the config file rules
         if ($request->getIsCpRequest()) {
             $baseCpRoutesPath = Craft::$app->getBasePath() . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'cproutes';
-            /** @var array $rules */
+            /* @var array $rules */
             $rules = require $baseCpRoutesPath . DIRECTORY_SEPARATOR . 'common.php';
 
             if (Craft::$app->getEdition() === Craft::Pro) {
@@ -339,7 +330,7 @@ class UrlManager extends \yii\web\UrlManager
         }
 
         $event = new RegisterUrlRulesEvent([
-            'rules' => $rules
+            'rules' => $rules,
         ]);
         $this->trigger($eventName, $event);
 
@@ -369,6 +360,11 @@ class UrlManager extends \yii\web\UrlManager
             return $route;
         }
 
+        // Is this a "well-known" request?
+        if (($route = $this->_getMatchedDiscoverableUrlRoute($request)) !== false) {
+            return $route;
+        }
+
         // Does it look like they're trying to access a public template path?
         return $this->_getTemplateRoute($request);
     }
@@ -390,22 +386,26 @@ class UrlManager extends \yii\web\UrlManager
             !$request->getIsSiteRequest() ||
             Craft::$app->getConfig()->getGeneral()->headlessMode
         ) {
-
             $this->setMatchedElement(false);
             return false;
         }
 
         $path = $request->getPathInfo();
-        /** @var Element $element */
-        /** @noinspection PhpUnhandledExceptionInspection */
-        $element = Craft::$app->getElements()->getElementByUri($path, Craft::$app->getSites()->getCurrentSite()->id, true);
+
+        // Don't allow routing to the homepage via /__home__
+        if ($path !== Element::HOMEPAGE_URI) {
+            $element = Craft::$app->getElements()->getElementByUri($path, Craft::$app->getSites()->getCurrentSite()->id, true);
+        } else {
+            $element = null;
+        }
+
         $this->setMatchedElement($element ?: false);
 
         if (YII_DEBUG) {
             Craft::debug([
                 'rule' => 'Element URI: ' . $path,
                 'match' => $this->_matchedElement instanceof ElementInterface,
-                'parent' => null
+                'parent' => null,
             ], __METHOD__);
         }
 
@@ -421,16 +421,15 @@ class UrlManager extends \yii\web\UrlManager
     private function _getMatchedUrlRoute(Request $request)
     {
         // Code adapted from \yii\web\UrlManager::parseRequest()
-        /** @var $rule YiiUrlRule */
+        /* @var $rule YiiUrlRule */
         foreach ($this->rules as $rule) {
-
             $route = $rule->parseRequest($this, $request);
 
             if (YII_DEBUG) {
                 Craft::debug([
                     'rule' => 'URL Rule: ' . (method_exists($rule, '__toString') ? $rule->__toString() : get_class($rule)),
                     'match' => $route !== false,
-                    'parent' => null
+                    'parent' => null,
                 ], __METHOD__);
             }
 
@@ -444,6 +443,39 @@ class UrlManager extends \yii\web\UrlManager
         }
 
         return false;
+    }
+
+    /**
+     * Attempts to match a path with a “well-known” URL.
+     *
+     * @param Request $request
+     * @return mixed
+     */
+    private function _getMatchedDiscoverableUrlRoute(Request $request)
+    {
+        $redirectUri = $request->getPathInfo() === '.well-known/change-password'
+            ? Craft::$app->getConfig()->getGeneral()->getSetPasswordRequestPath(Craft::$app->getSites()->getCurrentSite()->handle)
+            : null;
+
+        if (YII_DEBUG) {
+            Craft::debug([
+                'rule' => 'Discoverable change password URL',
+                'match' => $redirectUri !== null,
+                'parent' => null,
+            ], __METHOD__);
+        }
+
+        if (!$redirectUri) {
+            return false;
+        }
+
+        return [
+            'redirect',
+            [
+                'url' => $redirectUri,
+                'statusCode' => 302,
+            ],
+        ];
     }
 
     /**
@@ -493,7 +525,7 @@ class UrlManager extends \yii\web\UrlManager
             Craft::debug([
                 'rule' => 'Template: ' . $path,
                 'match' => $matches,
-                'parent' => null
+                'parent' => null,
             ], __METHOD__);
         }
 
@@ -522,7 +554,7 @@ class UrlManager extends \yii\web\UrlManager
             Craft::debug([
                 'rule' => 'Token' . ($token !== null ? ': ' . $token : ''),
                 'match' => $token !== null,
-                'parent' => null
+                'parent' => null,
             ], __METHOD__);
         }
 
